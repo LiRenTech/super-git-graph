@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { 
-  ReactFlow, 
-  Background, 
-  Controls, 
+import {
+  ReactFlow,
+  Background,
+  Controls,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -13,7 +13,8 @@ import {
   NodeTypes,
   ReactFlowProvider,
   useReactFlow,
-  Viewport
+  Viewport,
+  OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { RefreshCw, GitBranch, Sun, Moon } from "lucide-react";
@@ -42,24 +43,49 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const isCtrlPressed = useRef(false);
 
-  const fetchCommits = useCallback(async (path: string) => {
-    try {
-      setLoading(true);
-      const commits = await invoke<GitCommit[]>('get_commits', { repoPath: path, limit: 100 });
-      // Reverse commits to show oldest first (Top -> Bottom)
-      const layoutData = getLayoutedElements(commits.reverse());
-      setNodes(layoutData.nodes);
-      setEdges(layoutData.edges);
-      
-      // Fit view after a short delay to allow rendering
-      setTimeout(() => fitView({ padding: 0.2 }), 100);
-    } catch (error) {
-      console.error("Failed to fetch commits:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [setNodes, setEdges, fitView]);
+  // Track Ctrl key state
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control" || e.key === "Meta") isCtrlPressed.current = true;
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control" || e.key === "Meta")
+        isCtrlPressed.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  const fetchCommits = useCallback(
+    async (path: string) => {
+      try {
+        setLoading(true);
+        const commits = await invoke<GitCommit[]>("get_commits", {
+          repoPath: path,
+          limit: 100,
+        });
+        // Reverse commits to show oldest first (Top -> Bottom)
+        const layoutData = getLayoutedElements(commits.reverse());
+        setNodes(layoutData.nodes);
+        setEdges(layoutData.edges);
+
+        // Fit view after a short delay to allow rendering
+        setTimeout(() => fitView({ padding: 0.2 }), 100);
+      } catch (error) {
+        console.error("Failed to fetch commits:", error);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setNodes, setEdges, fitView],
+  );
 
   // Initial load
   useEffect(() => {
@@ -72,26 +98,131 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
   // Filter nodes based on search query
   useEffect(() => {
-    setNodes((nds) => 
+    setNodes((nds) =>
       nds.map((node) => {
         if (!searchQuery) return { ...node, hidden: false };
-        
+
         const label = (node.data.label as string).toLowerCase();
         const id = node.id.toLowerCase();
         const query = searchQuery.toLowerCase();
         const isMatch = label.includes(query) || id.includes(query);
-        
-        return { 
-          ...node, 
+
+        return {
+          ...node,
           hidden: !isMatch,
-          style: { 
+          style: {
             ...node.style,
-            opacity: isMatch ? 1 : 0.1 
-          }
+            opacity: isMatch ? 1 : 0.1,
+          },
         };
-      })
+      }),
     );
   }, [searchQuery, setNodes]);
+
+  const onNodeDrag: OnNodeDrag = useCallback(
+    (_, node, nodes) => {
+      if (!isCtrlPressed.current) return;
+
+      // Find all descendants
+      const descendants = new Set<string>();
+      const queue = [node.id];
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        // Find edges where source is currentId (meaning currentId is parent)
+        // Remember: in our graph model, Edge direction is Parent -> Child
+        const childEdges = edges.filter((e) => e.source === currentId);
+
+        childEdges.forEach((edge) => {
+          if (!descendants.has(edge.target)) {
+            descendants.add(edge.target);
+            queue.push(edge.target);
+          }
+        });
+      }
+
+      if (descendants.size === 0) return;
+
+      // Calculate delta movement
+      // We need to find the previous position of the dragged node to calculate delta
+      // But React Flow updates the node position optimistically.
+      // A better way: find the initial position? No.
+      // Actually, onNodeDrag provides the *new* position.
+      // But we don't easily know the *delta* from this callback alone without tracking previous state.
+      // However, dragging updates the node in the `nodes` array.
+
+      // Alternative approach:
+      // When dragging node A, we want B and C to move by the same amount.
+      // But onNodeDrag is fired repeatedly.
+      // Let's use `onNodeDragStart` to capture initial positions if needed?
+      // Or simply: update descendants to maintain relative position?
+
+      // Let's try a simpler approach:
+      // We can't easily get delta here.
+      // But we can use `onNodesChange`? No, that's internal.
+
+      // Wait, onNodeDrag gives us the node *being dragged* with its new position.
+      // We need to update *other* nodes (descendants).
+    },
+    [edges],
+  );
+
+  // To implement this correctly with delta, we need to track the last position
+  const lastNodePos = useRef<{ x: number; y: number } | null>(null);
+
+  const onNodeDragStart: OnNodeDrag = useCallback((_, node) => {
+    lastNodePos.current = { ...node.position };
+  }, []);
+
+  const onNodeDragHandler: OnNodeDrag = useCallback(
+    (_, node) => {
+      if (!isCtrlPressed.current || !lastNodePos.current) {
+        lastNodePos.current = { ...node.position };
+        return;
+      }
+
+      const dx = node.position.x - lastNodePos.current.x;
+      const dy = node.position.y - lastNodePos.current.y;
+
+      if (dx === 0 && dy === 0) return;
+
+      // Find descendants
+      const descendants = new Set<string>();
+      const queue = [node.id];
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        const childEdges = edges.filter((e) => e.source === currentId);
+
+        childEdges.forEach((edge) => {
+          if (!descendants.has(edge.target)) {
+            descendants.add(edge.target);
+            queue.push(edge.target);
+          }
+        });
+      }
+
+      if (descendants.size > 0) {
+        setNodes((nds) =>
+          nds.map((n) => {
+            if (descendants.has(n.id)) {
+              return {
+                ...n,
+                position: {
+                  x: n.position.x + dx,
+                  y: n.position.y + dy,
+                },
+              };
+            }
+            return n;
+          }),
+        );
+      }
+
+      lastNodePos.current = { ...node.position };
+    },
+    [edges, setNodes],
+  );
 
   const onMove = useCallback((viewport: Viewport) => {
     if (containerRef.current) {
@@ -99,7 +230,7 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
       // Higher value = larger labels when zoomed out
       const minScale = 1.0;
       const scale = viewport.zoom < minScale ? minScale / viewport.zoom : 1;
-      containerRef.current.style.setProperty('--label-scale', scale.toString());
+      containerRef.current.style.setProperty("--label-scale", scale.toString());
     }
   }, []);
 
@@ -116,15 +247,15 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button 
-          variant="outline" 
-          size="icon" 
-          onClick={handleRefresh} 
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleRefresh}
           disabled={loading}
           className="bg-background/80 backdrop-blur"
           title="Refresh"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
@@ -135,6 +266,8 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         onEdgesChange={onEdgesChange}
         nodesConnectable={false}
         nodesDraggable={true}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDragHandler}
         nodeTypes={nodeTypes}
         fitView
         minZoom={0.01}
