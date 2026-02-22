@@ -101,7 +101,7 @@ export function GitBranchList() {
     const hue = getBranchHue(branch.name);
     return (
       <div className={cn(
-        "flex items-center gap-2 py-0.5 px-2 hover:bg-muted/50 rounded-md group text-xs transition-opacity",
+        "flex items-center gap-2 py-0.5 px-2 hover:bg-muted/50 rounded-md group text-xs transition-opacity relative w-full overflow-hidden",
         !branch.isLoaded && "opacity-70"
       )}>
         {/* Color Block */}
@@ -122,29 +122,37 @@ export function GitBranchList() {
         </div>
 
         {/* Branch Name - Flex grow to take available space */}
-        <span className="truncate flex-1 min-w-0" title={branch.name}>
+        <span 
+          className={cn(
+            "truncate flex-1 min-w-0",
+            branch.isLoaded && "pr-6" // Reserve space for the absolute button
+          )} 
+          title={branch.name}
+        >
           {branch.name}
         </span>
 
         {/* Jump Button - Fixed width, always visible if loaded */}
         {branch.isLoaded && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
-                  onClick={() => handleJumpTo(branch.nodeId)}
-                >
-                  <Goal className="w-3 h-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                <p>Jump to branch</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center">
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 shrink-0 opacity-100 transition-opacity focus:opacity-100 hover:bg-muted"
+                    onClick={() => handleJumpTo(branch.nodeId)}
+                  >
+                    <Goal className="w-3 h-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  <p>Jump to branch</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         )}
       </div>
     );
@@ -152,11 +160,11 @@ export function GitBranchList() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 font-semibold text-sm uppercase text-muted-foreground border-b shrink-0 bg-background/50 backdrop-blur-sm">
+      <div className="p-4 font-semibold text-sm uppercase text-muted-foreground border-b shrink-0 bg-background/50 backdrop-blur-sm overflow-hidden">
         Branches
       </div>
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-4">
+      <ScrollArea className="flex-1 w-full overflow-hidden">
+        <div className="p-2 space-y-4 w-full">
           {visible.length > 0 && (
             <div>
               <div className="px-2 py-1 text-xs font-semibold text-muted-foreground mb-1 flex items-center justify-between">
