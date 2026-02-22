@@ -234,6 +234,8 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         attributionPosition="bottom-right"
         onMove={(_, viewport) => onMove(viewport)}
         className="bg-zinc-50 dark:bg-zinc-950 transition-colors duration-200"
+        edgesFocusable={false}
+        elementsSelectable={true}
       >
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
         <Controls className="dark:bg-zinc-800 dark:border-zinc-700 dark:fill-zinc-100 dark:text-zinc-100 [&>button]:dark:bg-zinc-800 [&>button]:dark:border-zinc-700 [&>button]:dark:fill-zinc-100 [&>button:hover]:dark:bg-zinc-700" />

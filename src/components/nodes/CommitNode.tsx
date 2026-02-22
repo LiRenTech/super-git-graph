@@ -165,20 +165,25 @@ export function CommitNode({
 
           {/* Label (Below the circle) */}
           <div className="absolute top-6 left-1/2 -translate-x-1/2 w-48 text-center pointer-events-none">
-            {showHash && (
-              <p className="text-[10px] text-muted-foreground truncate font-mono opacity-70 absolute left-[calc(50%+14px)] -top-5">
-                {data.commit?.id.substring(0, 7)}
-              </p>
-            )}
             {showMessage && (
               <p
                 className={cn(
-                  "text-xs font-medium truncate max-w-full leading-tight transition-colors mt-1",
-                  selected ? "text-primary" : "text-foreground",
+                  "text-xs font-medium truncate absolute left-[calc(50%+14px)] -top-5 text-left max-w-[200px] text-foreground",
                   isMerge && !selected && "opacity-50",
                 )}
               >
                 {data.label}
+              </p>
+            )}
+            {showHash && (
+              <p
+                className={cn(
+                  "text-[9px] font-mono truncate max-w-full leading-tight transition-colors mt-1 opacity-60",
+                  selected ? "text-primary" : "text-foreground",
+                  isMerge && !selected && "opacity-40",
+                )}
+              >
+                {data.commit?.id.substring(0, 7)}
               </p>
             )}
           </div>

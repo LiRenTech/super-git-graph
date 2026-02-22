@@ -72,7 +72,11 @@ export const getLayoutedElements = (commits: GitCommit[]) => {
 					stroke: "hsl(var(--muted-foreground))",
 					strokeWidth: 2,
 					strokeDasharray: isMergeParent ? "5 5" : "none",
+					cursor: "default",
+					pointerEvents: "none",
 				},
+				focusable: false,
+				selectable: false,
 			});
 		});
 	});
