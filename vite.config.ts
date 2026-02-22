@@ -13,6 +13,9 @@ export default defineConfig(async () => ({
 			"@": path.resolve(__dirname, "./src"),
 		},
 	},
+	optimizeDeps: {
+		include: ['react-diff-viewer-continued'],
+	},
 
 	// Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
 	//

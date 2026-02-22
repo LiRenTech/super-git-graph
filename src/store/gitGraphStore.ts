@@ -18,6 +18,11 @@ interface GitGraphState {
   isDragSubtreeMode: boolean;
   visibleBranchNames: string[];
   focusNodeId: string | null;
+  diffMode: {
+    active: boolean;
+    sourceCommitId: string | null;
+    targetCommitId: string | null;
+  };
   setRepoPath: (path: string) => void;
   setGraphData: (nodes: Node[], edges: Edge[]) => void;
   setAllRefs: (refs: GitRef[]) => void;
@@ -28,6 +33,9 @@ interface GitGraphState {
   setIsDragSubtreeMode: (isDragSubtreeMode: boolean) => void;
   setVisibleBranchNames: (names: string[]) => void;
   setFocusNodeId: (id: string | null) => void;
+  startDiffMode: (sourceCommitId: string) => void;
+  endDiffMode: () => void;
+  setDiffTarget: (targetCommitId: string) => void;
 }
 
 export const useGitGraphStore = create<GitGraphState>((set) => ({
@@ -42,6 +50,11 @@ export const useGitGraphStore = create<GitGraphState>((set) => ({
   isDragSubtreeMode: false,
   visibleBranchNames: [],
   focusNodeId: null,
+  diffMode: {
+    active: false,
+    sourceCommitId: null,
+    targetCommitId: null,
+  },
   setRepoPath: (path) => set({ repoPath: path }),
   setGraphData: (nodes, edges) => set({ nodes, edges }),
   setAllRefs: (refs) => set({ allRefs: refs }),
@@ -52,4 +65,27 @@ export const useGitGraphStore = create<GitGraphState>((set) => ({
   setIsDragSubtreeMode: (mode) => set({ isDragSubtreeMode: mode }),
   setVisibleBranchNames: (names) => set({ visibleBranchNames: names }),
   setFocusNodeId: (id) => set({ focusNodeId: id }),
+  startDiffMode: (sourceCommitId) =>
+    set({
+      diffMode: {
+        active: true,
+        sourceCommitId,
+        targetCommitId: null,
+      },
+    }),
+  endDiffMode: () =>
+    set({
+      diffMode: {
+        active: false,
+        sourceCommitId: null,
+        targetCommitId: null,
+      },
+    }),
+  setDiffTarget: (targetCommitId) =>
+    set((state) => ({
+      diffMode: {
+        ...state.diffMode,
+        targetCommitId,
+      },
+    })),
 }));

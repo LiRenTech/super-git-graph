@@ -1,7 +1,6 @@
-use git2::{Oid, Repository, Sort, StatusOptions};
+use git2::{Oid, Repository, Sort, StatusOptions, ObjectType};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
 
 #[derive(Serialize)]
 pub struct GitCommit {
@@ -23,6 +22,18 @@ pub struct CommitResponse {
 pub struct GitRef {
     pub name: String,
     pub commit_id: String,
+}
+
+#[derive(Serialize)]
+pub struct FileDiff {
+    path: String,
+    old_content: String,
+    new_content: String,
+}
+
+#[derive(Serialize)]
+pub struct DiffResponse {
+    files: Vec<FileDiff>,
 }
 
 #[tauri::command]
@@ -240,4 +251,119 @@ pub fn get_commits(
     let has_more = walk_iter.next().is_some();
 
     Ok(CommitResponse { commits, has_more })
+}
+
+#[tauri::command]
+pub fn get_diff(
+    repo_path: String,
+    old_commit: String,
+    new_commit: String,
+) -> Result<DiffResponse, String> {
+    println!("get_diff called: old={}, new={}", old_commit, new_commit);
+
+    // Validate commit IDs
+    if old_commit == "working-copy" || new_commit == "working-copy" {
+        return Err("Cannot diff with working-copy. Please select real commits.".to_string());
+    }
+
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    let old_oid = Oid::from_str(&old_commit).map_err(|e| {
+        format!("Invalid commit ID '{}': {}", old_commit, e)
+    })?;
+    let new_oid = Oid::from_str(&new_commit).map_err(|e| {
+        format!("Invalid commit ID '{}': {}", new_commit, e)
+    })?;
+
+    let old_commit_obj = repo.find_commit(old_oid).map_err(|e| e.to_string())?;
+    let new_commit_obj = repo.find_commit(new_oid).map_err(|e| e.to_string())?;
+
+    let old_tree = old_commit_obj.tree().map_err(|e| e.to_string())?;
+    let new_tree = new_commit_obj.tree().map_err(|e| e.to_string())?;
+
+    let diff = repo
+        .diff_tree_to_tree(Some(&old_tree), Some(&new_tree), None)
+        .map_err(|e| e.to_string())?;
+
+    println!("Diff object created, getting deltas...");
+
+    let mut files = Vec::new();
+
+    for delta in diff.deltas() {
+        println!("Processing delta");
+
+        // Get the file path from either new_file or old_file
+        let file_path = delta.new_file().path()
+            .or_else(|| delta.old_file().path())
+            .map(|p| {
+                let path_str = p.to_string_lossy().to_string();
+                println!("Processing file: {}", path_str);
+                path_str
+            })
+            .unwrap_or_else(|| {
+                println!("Unknown file path in delta");
+                String::from("unknown")
+            });
+
+        // Get old content
+        let old_content = if let Some(old_path) = delta.old_file().path() {
+            println!("Getting old content from: {:?}", old_path);
+            get_file_content(&repo, &old_tree, &file_path, Some(old_path))
+        } else {
+            println!("File was added (no old content)");
+            String::new() // File was added
+        };
+
+        // Get new content
+        let new_content = if let Some(new_path) = delta.new_file().path() {
+            println!("Getting new content from: {:?}", new_path);
+            get_file_content(&repo, &new_tree, &file_path, Some(new_path))
+        } else {
+            println!("File was deleted (no new content)");
+            String::new() // File was deleted
+        };
+
+        files.push(FileDiff {
+            path: file_path,
+            old_content,
+            new_content,
+        });
+    }
+
+    println!("Returning {} files", files.len());
+    Ok(DiffResponse { files })
+}
+
+fn get_file_content(
+    repo: &Repository,
+    tree: &git2::Tree,
+    file_path: &str,
+    entry_path: Option<&std::path::Path>,
+) -> String {
+    let path_to_find = entry_path.unwrap_or_else(|| std::path::Path::new(file_path));
+
+    // Try to find the file in the tree
+    let tree_entry = match tree.get_path(path_to_find) {
+        Ok(entry) => entry,
+        Err(e) => {
+            eprintln!("Failed to get path {:?} from tree: {}", path_to_find, e);
+            return String::new();
+        }
+    };
+
+    if tree_entry.kind() != Some(ObjectType::Blob) {
+        eprintln!("Entry {:?} is not a blob, it's a {:?}", path_to_find, tree_entry.kind());
+        return String::new();
+    }
+
+    let obj = match repo.find_object(tree_entry.id(), Some(ObjectType::Blob)) {
+        Ok(obj) => obj,
+        Err(e) => {
+            eprintln!("Failed to find object {:?}: {}", tree_entry.id(), e);
+            return String::new();
+        }
+    };
+
+    let blob = obj.as_blob().unwrap();
+    String::from_utf8_lossy(blob.content()).to_string()
 }

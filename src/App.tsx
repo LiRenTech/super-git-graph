@@ -272,6 +272,7 @@ function App() {
                         <GitGraphView
                           repoPath={path}
                           isActive={activeRepo === path}
+                          isDarkMode={isDarkMode}
                         />
                       </ReactFlowProvider>
                     </div>

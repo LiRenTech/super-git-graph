@@ -1,7 +1,7 @@
 import { Handle, Position, NodeProps, Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { GitCommit, getBranchHue } from "@/lib/graphUtils";
-import { GitBranch, Tag, Copy, ArrowLeftRight } from "lucide-react";
+import { GitBranch, Tag, Copy, ArrowLeftRight, GitCompare } from "lucide-react";
 import { useGitGraphStore } from "@/store/gitGraphStore";
 import {
   Popover,
@@ -27,6 +27,7 @@ export function CommitNode({
   selected,
   positionAbsoluteX,
   positionAbsoluteY,
+  id,
 }: NodeProps<Node<CommitNodeData, "commit">>) {
   const isHead = data.commit?.refs?.includes("HEAD");
   const branches =
@@ -40,7 +41,8 @@ export function CommitNode({
   const isUncommitted = data.commit?.id === "working-copy";
   const isStash = data.commit?.refs?.some((r) => r.startsWith("stash@"));
 
-  const { showHash, showMessage, showCoordinates } = useGitGraphStore();
+  const { showHash, showMessage, showCoordinates, startDiffMode, diffMode } = useGitGraphStore();
+  const isDiffSource = diffMode.active && diffMode.sourceCommitId === id;
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   const copyToClipboard = async (text: string, type: "message" | "hash") => {
@@ -155,6 +157,9 @@ export function CommitNode({
               isStash
                 ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30"
                 : "",
+              isDiffSource
+                ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-background"
+                : "",
               !selected && "group-hover:scale-110", // Only hover scale if not selected
               isMerge && !selected && "opacity-50",
               "shadow-sm dark:shadow-none",
@@ -221,6 +226,18 @@ export function CommitNode({
         sideOffset={10}
         alignOffset={20}
       >
+        <Button
+          variant="ghost"
+          size="sm"
+          className="justify-start gap-2 h-8"
+          onClick={() => {
+            setPopoverOpen(false);
+            startDiffMode(data.commit.id);
+          }}
+        >
+          <GitCompare className="w-4 h-4" />
+          <span className="text-xs">Diff with another commit</span>
+        </Button>
         <Button variant="ghost" size="sm" className="justify-start gap-2 h-8">
           <ArrowLeftRight className="w-4 h-4" />
           <span className="text-xs">Checkout this commit</span>

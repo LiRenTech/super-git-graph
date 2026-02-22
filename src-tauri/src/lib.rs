@@ -1,4 +1,3 @@
-use git::{get_all_refs, get_commits};
 use std::process::Command;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -46,6 +45,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             git::get_commits,
             git::get_all_refs,
+            git::get_diff,
             reveal_store_file
         ])
         .run(tauri::generate_context!())
