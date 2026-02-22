@@ -25,8 +25,6 @@ import { Input } from "@/components/ui/input";
 import { getLayoutedElements, GitCommit } from "@/lib/graphUtils";
 import { CommitNode } from "@/components/nodes/CommitNode";
 
-import { useGitGraphStore } from "@/store/gitGraphStore";
-
 // Define node types outside component
 const nodeTypes: NodeTypes = {
   commit: CommitNode,
@@ -44,7 +42,6 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const { showBackground } = useGitGraphStore();
   const [loading, setLoading] = useState(false);
   const isCtrlPressed = useRef(false);
   useEffect(() => {
@@ -238,7 +235,6 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         edgesFocusable={false}
         elementsSelectable={true}
       >
-        {showBackground && <Background variant={BackgroundVariant.Dots} gap={12} size={1} />}
         <Controls className="dark:bg-zinc-800 dark:border-zinc-700 dark:fill-zinc-100 dark:text-zinc-100 [&>button]:dark:bg-zinc-800 [&>button]:dark:border-zinc-700 [&>button]:dark:fill-zinc-100 [&>button:hover]:dark:bg-zinc-700" />
       </ReactFlow>
     </div>

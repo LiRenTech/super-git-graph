@@ -1,6 +1,7 @@
 use git2::{Repository, Oid, Sort, StatusOptions};
 use serde::Serialize;
 use std::path::Path;
+use std::collections::HashMap;
 
 #[derive(Serialize)]
 pub struct GitCommit {
@@ -19,6 +20,17 @@ pub fn get_commits(repo_path: String, limit: usize) -> Result<Vec<GitCommit>, St
     
     walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME).map_err(|e| e.to_string())?;
     walk.push_head().map_err(|e| e.to_string())?;
+
+    // Handle Stashes
+    let mut stash_map = HashMap::new();
+    if let Ok(reflog) = repo.reflog("refs/stash") {
+        for (i, entry) in reflog.iter().enumerate() {
+            let id = entry.id_new();
+            if let Ok(_) = walk.push(id) {
+                stash_map.insert(id, format!("stash@{{{}}}", i));
+            }
+        }
+    }
 
     let mut commits = Vec::new();
     let mut count = 0;
@@ -96,6 +108,11 @@ pub fn get_commits(repo_path: String, limit: usize) -> Result<Vec<GitCommit>, St
                     }
                 }
             }
+        }
+
+        // Check if this commit is a stash
+        if let Some(stash_name) = stash_map.get(&oid) {
+            refs.push(stash_name.clone());
         }
 
         commits.push(GitCommit {

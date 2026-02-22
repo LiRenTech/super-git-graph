@@ -50,6 +50,7 @@ export function CommitNode({
   const isMerge = data.commit?.parents && data.commit.parents.length > 1;
   const isRoot = !data.commit?.parents || data.commit.parents.length === 0;
   const isUncommitted = data.commit?.id === "working-copy";
+  const isStash = data.commit?.refs?.some((r) => r.startsWith("stash@"));
 
   const { showHash, showMessage } = useGitGraphStore();
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -144,8 +145,9 @@ export function CommitNode({
           {/* The Circle Node */}
           <div
             className={cn(
-              "rounded-full transition-all duration-200 z-10 flex items-center justify-center relative",
+              "transition-all duration-200 z-10 flex items-center justify-center relative",
               "bg-background",
+              isStash ? "rounded-md" : "rounded-full",
               isRoot ? "w-6 h-6 border-2 border-primary" : "w-4 h-4 border-2",
               isHead
                 ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900"
@@ -154,6 +156,9 @@ export function CommitNode({
                   : "border-primary",
               isUncommitted
                 ? "border-dashed border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-zinc-800"
+                : "",
+              isStash
+                ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30"
                 : "",
               !selected && "group-hover:scale-110", // Only hover scale if not selected
               isMerge && !selected && "opacity-50",
@@ -167,9 +172,14 @@ export function CommitNode({
             {isHead && (
               <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-blue-500 rounded-full" />
             )}
-            {isMerge && !isHead && (
+            {isMerge && !isHead && !isStash && (
               <span className="text-[8px] font-bold text-foreground leading-none">
                 M
+              </span>
+            )}
+            {isStash && (
+              <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 leading-none">
+                S
               </span>
             )}
           </div>
