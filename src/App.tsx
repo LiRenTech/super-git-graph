@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -6,14 +7,12 @@ import {
   FolderOpen,
   Sun,
   Moon,
-  Plus,
+  Move,
+  Network,
   X,
-  Hash,
   MessageSquareText,
   Eye,
   EyeOff,
-  Move,
-  Network,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -30,11 +29,14 @@ import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { useGitGraphStore } from "@/store/gitGraphStore";
 import { CacheSettings } from "@/components/CacheSettings";
+import { ActivityBar, SidebarView } from "@/components/layout/ActivityBar";
+import { Sidebar } from "@/components/layout/Sidebar";
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [openRepos, setOpenRepos] = useState<string[]>([]);
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
+  const [sidebarView, setSidebarView] = useState<SidebarView>("branch");
 
   const {
     showHash,
@@ -103,7 +105,7 @@ function App() {
     <TooltipProvider>
       <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
         {/* Top Bar */}
-        <header className="h-14 border-b flex items-center px-4 justify-between bg-card z-10 shrink-0">
+        <header className="h-14 border-b flex items-center px-4 justify-between bg-muted/30 z-10 shrink-0">
           <div className="flex items-center gap-4 overflow-hidden">
             <div className="flex items-center gap-2 font-bold text-lg shrink-0">
               <GitBranch className="w-5 h-5" />
@@ -220,67 +222,73 @@ function App() {
           </div>
         </header>
 
-        {/* Tabs and Main Content */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {openRepos.length > 0 ? (
-            <Tabs
-              value={activeRepo || undefined}
-              onValueChange={setActiveRepo}
-              className="flex-1 flex flex-col overflow-hidden"
-            >
-              <div className="border-b bg-muted/40 px-4 pt-2">
-                <TabsList className="bg-transparent h-auto p-0 gap-2 w-full justify-start overflow-x-auto no-scrollbar">
-                  {openRepos.map((path) => (
-                    <TabsTrigger
-                      key={path}
-                      value={path}
-                      className="data-[state=active]:bg-background data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-border rounded-t-md px-3 py-2 h-9 flex items-center gap-2 group min-w-[120px] max-w-[200px]"
-                      onMouseDown={(e) => handleMouseDown(e, path)}
-                    >
-                      <span className="truncate text-xs">
-                        {path.split("/").pop()}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => closeRepo(e, path)}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted rounded-sm transition-opacity"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
+        {/* Main Content Area: Activity Bar + Sidebar + Main View */}
+        <div className="flex-1 overflow-hidden flex flex-row">
+          <ActivityBar activeView={sidebarView} onViewChange={setSidebarView} />
+          <Sidebar activeView={sidebarView} />
 
-              {openRepos.map((path) => (
-                <TabsContent
-                  key={path}
-                  value={path}
-                  className="flex-1 m-0 p-0 overflow-hidden relative"
-                  forceMount={true} // Keep mounted to preserve graph state
-                  hidden={activeRepo !== path} // Hide instead of unmount
-                >
-                  <div className="w-full h-full">
-                    <ReactFlowProvider>
-                      <GitGraphView
-                        repoPath={path}
-                        isActive={activeRepo === path}
-                      />
-                    </ReactFlowProvider>
-                  </div>
-                </TabsContent>
-              ))}
-            </Tabs>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
-              <GitBranch className="w-16 h-16 opacity-20" />
-              <p>Open a Git repository to get started</p>
-              <Button onClick={handleOpenRepo}>
-                <FolderOpen className="w-4 h-4 mr-2" />
-                Open Repository
-              </Button>
-            </div>
-          )}
+          {/* Original Main Content */}
+          <div className="flex-1 overflow-hidden flex flex-col min-w-0 bg-background">
+            {openRepos.length > 0 ? (
+              <Tabs
+                value={activeRepo || undefined}
+                onValueChange={setActiveRepo}
+                className="flex-1 flex flex-col overflow-hidden"
+              >
+                <div className="border-b bg-muted/40 px-4 pt-2">
+                  <TabsList className="bg-transparent h-auto p-0 gap-2 w-full justify-start overflow-x-auto no-scrollbar">
+                    {openRepos.map((path) => (
+                      <TabsTrigger
+                        key={path}
+                        value={path}
+                        className="data-[state=active]:bg-background data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-border rounded-t-md px-3 py-2 h-9 flex items-center gap-2 group min-w-[120px] max-w-[200px]"
+                        onMouseDown={(e) => handleMouseDown(e, path)}
+                      >
+                        <span className="truncate text-xs">
+                          {path.split("/").pop()}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => closeRepo(e, path)}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted rounded-sm transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
+
+                {openRepos.map((path) => (
+                  <TabsContent
+                    key={path}
+                    value={path}
+                    className="flex-1 m-0 p-0 overflow-hidden relative"
+                    forceMount={true} // Keep mounted to preserve graph state
+                    hidden={activeRepo !== path} // Hide instead of unmount
+                  >
+                    <div className="w-full h-full">
+                      <ReactFlowProvider>
+                        <GitGraphView
+                          repoPath={path}
+                          isActive={activeRepo === path}
+                        />
+                      </ReactFlowProvider>
+                    </div>
+                  </TabsContent>
+                ))}
+              </Tabs>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+                <GitBranch className="w-16 h-16 opacity-20" />
+                <p>Open a Git repository to get started</p>
+                <Button onClick={handleOpenRepo}>
+                  <FolderOpen className="w-4 h-4 mr-2" />
+                  Open Repository
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <Toaster position="top-center" />
