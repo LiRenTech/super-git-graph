@@ -1,94 +1,113 @@
-use git2::Repository;
-use serde::{Deserialize, Serialize};
+use git2::{Repository, Oid, Sort, StatusOptions};
+use serde::Serialize;
 use std::path::Path;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize)]
 pub struct GitCommit {
-    pub id: String,
-    pub message: String,
-    pub author: String,
-    pub date: i64,
-    pub parents: Vec<String>,
-    pub refs: Vec<String>, // Tags, branches, HEAD, etc.
+    id: String,
+    message: String,
+    author: String,
+    date: i64,
+    parents: Vec<String>,
+    refs: Vec<String>,
 }
 
 #[tauri::command]
-pub fn get_commits(repo_path: String, limit: Option<usize>) -> Result<Vec<GitCommit>, String> {
-    let repo = Repository::open(Path::new(&repo_path)).map_err(|e| e.to_string())?;
+pub fn get_commits(repo_path: String, limit: usize) -> Result<Vec<GitCommit>, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    let mut walk = repo.revwalk().map_err(|e| e.to_string())?;
+    
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME).map_err(|e| e.to_string())?;
+    walk.push_head().map_err(|e| e.to_string())?;
 
-    // Collect references (branches, tags, HEAD)
-    let mut refs_map = std::collections::HashMap::new();
+    let mut commits = Vec::new();
+    let mut count = 0;
 
-    // Add HEAD
-    if let Ok(head) = repo.head() {
-        if let Some(target) = head.target() {
-            refs_map
-                .entry(target.to_string())
-                .or_insert(Vec::new())
-                .push("HEAD".to_string());
+    // Check for uncommitted changes
+    let mut status_opts = StatusOptions::new();
+    status_opts.include_untracked(true);
+    
+    let has_changes = repo
+        .statuses(Some(&mut status_opts))
+        .map(|statuses| !statuses.is_empty())
+        .unwrap_or(false);
+
+    if has_changes {
+        // Create a virtual "Uncommitted Changes" commit
+        // We need to find the current HEAD to set as parent
+        let head = repo.head().ok();
+        let head_oid = head.as_ref().and_then(|h| h.target()).map(|oid| oid.to_string());
+        
+        if let Some(parent_id) = head_oid {
+             commits.push(GitCommit {
+                id: "working-copy".to_string(),
+                message: "Uncommitted Changes".to_string(),
+                author: "You".to_string(),
+                date: chrono::Utc::now().timestamp(),
+                parents: vec![parent_id],
+                refs: vec![],
+            });
         }
     }
 
-    // Add branches
-    if let Ok(branches) = repo.branches(None) {
-        for branch in branches {
-            if let Ok((branch, _)) = branch {
-                if let (Some(name), Some(target)) =
-                    (branch.name().ok().flatten(), branch.get().target())
-                {
-                    refs_map
-                        .entry(target.to_string())
-                        .or_insert(Vec::new())
-                        .push(name.to_string());
+    for oid in walk {
+        if count >= limit {
+            break;
+        }
+        
+        let oid = oid.map_err(|e| e.to_string())?;
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+        
+        let message = commit.summary().unwrap_or("").to_string();
+        let author = commit.author().name().unwrap_or("").to_string();
+        let date = commit.time().seconds();
+        let parents = commit.parent_ids().map(|p| p.to_string()).collect();
+        
+        // Collect refs
+        let mut refs = Vec::new();
+
+        // Check if HEAD points to this commit
+        if let Ok(head) = repo.head() {
+            if let Some(target) = head.target() {
+                if target == oid {
+                    refs.push("HEAD".to_string());
                 }
             }
         }
-    }
 
-    // Add tags
-    if let Ok(tags) = repo.tag_names(None) {
-        for tag_name in tags.iter().flatten() {
-            if let Ok(obj) = repo.revparse_single(tag_name) {
-                // For annotated tags, we need the target commit
-                let commit_id = if let Some(tag) = obj.as_tag() {
-                    tag.target_id().to_string()
-                } else {
-                    obj.id().to_string()
-                };
-                refs_map
-                    .entry(commit_id)
-                    .or_insert(Vec::new())
-                    .push(tag_name.to_string());
+        // Get other refs
+        if let Ok(repo_refs) = repo.references() {
+            for r in repo_refs {
+                if let Ok(r) = r {
+                    if r.target() == Some(oid) {
+                        if let Some(name) = r.name() {
+                            // Skip HEAD if we already added it (though repo.references usually doesn't show HEAD if symbolic)
+                            if name == "HEAD" { continue; }
+
+                            if name.starts_with("refs/heads/") {
+                                refs.push(name.replace("refs/heads/", ""));
+                            } else if name.starts_with("refs/remotes/") {
+                                refs.push(name.replace("refs/remotes/", ""));
+                            } else {
+                                // Keep refs/tags/ and others as is for now, frontend handles tags
+                                refs.push(name.to_string());
+                            }
+                        }
+                    }
+                }
             }
         }
-    }
-
-    let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
-    revwalk.push_head().map_err(|e| e.to_string())?;
-    revwalk
-        .set_sorting(git2::Sort::TIME)
-        .map_err(|e| e.to_string())?;
-
-    let mut commits = Vec::new();
-    let limit_val = limit.unwrap_or(100);
-
-    for (i, oid) in revwalk.enumerate() {
-        if i >= limit_val {
-            break;
-        }
-
-        let oid = oid.map_err(|e| e.to_string())?;
-        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
-        let id_str = commit.id().to_string();
 
         commits.push(GitCommit {
-            id: id_str.clone(),
-            message: commit.message().unwrap_or("").to_string(),
-            author: commit.author().name().unwrap_or("Unknown").to_string(),
-            date: commit.time().seconds(),
-            parents: commit.parent_ids().map(|id| id.to_string()).collect(),
-            refs: refs_map.remove(&id_str).unwrap_or_default(),
+            id: oid.to_string(),
+            message,
+            author,
+            date,
+            parents,
+            refs,
         });
+        
+        count += 1;
     }
 
     Ok(commits)

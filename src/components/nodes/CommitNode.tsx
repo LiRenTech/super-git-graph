@@ -49,6 +49,7 @@ export function CommitNode({
     data.commit?.refs?.filter((r) => r.startsWith("refs/tags/")) || [];
   const isMerge = data.commit?.parents && data.commit.parents.length > 1;
   const isRoot = !data.commit?.parents || data.commit.parents.length === 0;
+  const isUncommitted = data.commit?.id === "working-copy";
 
   const { showHash, showMessage } = useGitGraphStore();
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -78,19 +79,18 @@ export function CommitNode({
             isConnectable={false}
           />
 
+          {isHead && (
+            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded text-[10px] font-medium shadow-sm whitespace-nowrap z-20">
+              HEAD
+              <div className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-blue-200 dark:border-l-blue-800" />
+            </div>
+          )}
+
           {/* Branch/Tag Labels - Pointing to the node */}
           <div
             className="absolute bottom-full mb-2 flex flex-col items-center gap-1 origin-bottom"
             style={{ transform: "scale(var(--label-scale, 1))" }}
           >
-            {isHead && (
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded text-[10px] font-medium shadow-sm whitespace-nowrap">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                HEAD
-                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-blue-200 dark:border-t-blue-800" />
-              </div>
-            )}
-
             {branches.map((branch) => {
               const hue = getBranchHue(branch);
               return (
@@ -152,6 +152,9 @@ export function CommitNode({
                 : isRoot
                   ? "border-primary"
                   : "border-primary",
+              isUncommitted
+                ? "border-dashed border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-zinc-800"
+                : "",
               !selected && "group-hover:scale-110", // Only hover scale if not selected
               isMerge && !selected && "opacity-50",
               "shadow-sm dark:shadow-none",
