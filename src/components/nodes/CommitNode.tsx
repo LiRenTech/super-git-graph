@@ -48,6 +48,7 @@ export function CommitNode({
   const tags =
     data.commit?.refs?.filter((r) => r.startsWith("refs/tags/")) || [];
   const isMerge = data.commit?.parents && data.commit.parents.length > 1;
+  const isRoot = !data.commit?.parents || data.commit.parents.length === 0;
 
   const { showHash, showMessage } = useGitGraphStore();
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -143,16 +144,23 @@ export function CommitNode({
           {/* The Circle Node */}
           <div
             className={cn(
-              "w-4 h-4 rounded-full border-2 transition-all duration-200 z-10 flex items-center justify-center relative",
+              "rounded-full transition-all duration-200 z-10 flex items-center justify-center relative",
               "bg-background",
+              isRoot ? "w-6 h-6 border-2 border-primary" : "w-4 h-4 border-2",
               isHead
                 ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900"
-                : "border-primary",
+                : isRoot
+                  ? "border-primary"
+                  : "border-primary",
               !selected && "group-hover:scale-110", // Only hover scale if not selected
               isMerge && !selected && "opacity-50",
               "shadow-sm dark:shadow-none",
             )}
           >
+            {isRoot && (
+              <div className="absolute inset-0 rounded-full border-2 border-primary m-0.5" />
+            )}
+            {isRoot && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
             {isHead && (
               <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-blue-500 rounded-full" />
             )}
