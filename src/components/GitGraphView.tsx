@@ -52,6 +52,7 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [localRefs, setLocalRefs] = useState<GitRef[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -79,8 +80,14 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   useEffect(() => {
     if (isActive) {
       setGraphData(nodes, edges);
+      setAllRefs(localRefs);
+      // Also update visible branches based on current viewport when becoming active
+      // This is needed because onMoveEnd might not fire if we just switch tabs without moving
+      // We can trigger a recalculation or just let the user move to update
+      // But ideally we should preserve visible branches state too? 
+      // For now, let's just ensure the data is correct.
     }
-  }, [isActive, nodes, edges, setGraphData]);
+  }, [isActive, nodes, edges, localRefs, setGraphData, setAllRefs]);
 
   const fetchAllRefs = useCallback(
     async (path: string) => {
@@ -88,12 +95,15 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         const refs = await invoke<GitRef[]>("get_all_refs", {
           repoPath: path,
         });
-        setAllRefs(refs);
+        setLocalRefs(refs);
+        if (isActive) {
+           setAllRefs(refs);
+        }
       } catch (e) {
         console.error("Failed to fetch refs", e);
       }
     },
-    [setAllRefs],
+    [isActive, setAllRefs],
   );
 
   const fetchCommits = useCallback(
