@@ -1,23 +1,18 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
-  Background,
   Controls,
   useNodesState,
   useEdgesState,
-  addEdge,
-  Connection,
   Edge,
   Node,
-  BackgroundVariant,
   NodeTypes,
-  ReactFlowProvider,
   useReactFlow,
   Viewport,
   OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { RefreshCw, GitBranch, Sun, Moon, ArrowUp, Move } from "lucide-react";
+import { RefreshCw, ArrowUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { Button } from "@/components/ui/button";
@@ -25,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { getLayoutedElements, GitCommit } from "@/lib/graphUtils";
 import { layoutService } from "@/lib/layoutService";
 import { CommitNode } from "@/components/nodes/CommitNode";
-import { useGitGraphStore } from "@/store/gitGraphStore";
+import { useGitGraphStore, GitRef } from "@/store/gitGraphStore";
 
 // Define node types outside component
 const nodeTypes: NodeTypes = {
@@ -43,9 +38,16 @@ interface CommitResponse {
 }
 
 export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
-  const { fitView, getNodes } = useReactFlow();
+  const { fitView, getNodes, setCenter, getViewport } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
-  const { isDragSubtreeMode } = useGitGraphStore();
+  const {
+    isDragSubtreeMode,
+    setVisibleBranchNames,
+    focusNodeId,
+    setFocusNodeId,
+    setGraphData,
+    setAllRefs,
+  } = useGitGraphStore();
   // const { showCoordinates, setShowCoordinates } = useGitGraphStore();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -72,6 +74,27 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, []);
+
+  // Sync nodes to store when active
+  useEffect(() => {
+    if (isActive) {
+      setGraphData(nodes, edges);
+    }
+  }, [isActive, nodes, edges, setGraphData]);
+
+  const fetchAllRefs = useCallback(
+    async (path: string) => {
+      try {
+        const refs = await invoke<GitRef[]>("get_all_refs", {
+          repoPath: path,
+        });
+        setAllRefs(refs);
+      } catch (e) {
+        console.error("Failed to fetch refs", e);
+      }
+    },
+    [setAllRefs],
+  );
 
   const fetchCommits = useCallback(
     async (path: string, isLoadMore = false) => {
@@ -124,8 +147,6 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
         // Load cached layout
         const cachedLayout = await layoutService.getLayout(path);
-
-        let finalNodes = layoutData.nodes;
 
         if (cachedLayout) {
           console.log("Applying cached layout to nodes");
@@ -255,7 +276,6 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
                 resolvedNodes.push({ ...node, position: newPos });
               }
             }
-            finalNodes = resolvedNodes;
             setNodes(resolvedNodes);
           } else {
             setNodes(layoutData.nodes);
@@ -285,10 +305,12 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   // Initial load
   useEffect(() => {
     fetchCommits(repoPath);
-  }, [repoPath, fetchCommits]);
+    fetchAllRefs(repoPath);
+  }, [repoPath, fetchCommits, fetchAllRefs]);
 
   const handleRefresh = () => {
     fetchCommits(repoPath);
+    fetchAllRefs(repoPath);
   };
 
   const handleLoadMore = () => {
@@ -317,10 +339,6 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
       }),
     );
   }, [searchQuery, setNodes]);
-
-  const onNodeDrag: OnNodeDrag = useCallback((_, node, nodes) => {
-    // This is now handled by onNodeDragHandler
-  }, []);
 
   // To implement this correctly with delta, we need to track the last position
   const lastNodePos = useRef<{ x: number; y: number } | null>(null);
@@ -392,7 +410,7 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   );
 
   const onNodeDragStop: OnNodeDrag = useCallback(
-    (_, node, _nodes) => {
+    (_, _node, _nodes) => {
       // Save all node positions to layout service
       // We use getNodes() to ensure we get the latest state of all nodes,
       // including those moved programmatically by our custom drag handler.
@@ -420,6 +438,62 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
       containerRef.current.style.setProperty("--label-scale", scale.toString());
     }
   }, []);
+
+  // Update visible branches on move end
+  const onMoveEnd = useCallback(() => {
+    if (!isActive || !containerRef.current) return;
+
+    const { x, y, zoom } = getViewport();
+    const { width, height } = containerRef.current.getBoundingClientRect();
+
+    // Calculate visible area in graph coordinates
+    // x_screen = x_graph * zoom + x_viewport
+    // x_graph = (x_screen - x_viewport) / zoom
+    const minX = -x / zoom;
+    const maxX = (width - x) / zoom;
+    const minY = -y / zoom;
+    const maxY = (height - y) / zoom;
+
+    const currentNodes = getNodes();
+    const visibleBranches = new Set<string>();
+
+    currentNodes.forEach((node) => {
+      const commit = node.data.commit as GitCommit;
+      if (!commit || !commit.refs) return;
+
+      // Check if node is within viewport (approximate with point check for performance)
+      // Ideally check bounding box overlap, but point check is faster and good enough for list
+      const isVisible =
+        node.position.x >= minX - 100 && // Add padding
+        node.position.x <= maxX + 100 &&
+        node.position.y >= minY - 100 &&
+        node.position.y <= maxY + 100;
+
+      if (isVisible) {
+        commit.refs.forEach((ref) => {
+          if (ref !== "HEAD" && !ref.startsWith("refs/tags/")) {
+            visibleBranches.add(ref);
+          }
+        });
+      }
+    });
+
+    setVisibleBranchNames(Array.from(visibleBranches));
+  }, [getNodes, getViewport, setVisibleBranchNames]);
+
+  // Handle focus request
+  useEffect(() => {
+    if (focusNodeId) {
+      const node = getNodes().find((n) => n.id === focusNodeId);
+      if (node) {
+        setCenter(node.position.x, node.position.y, {
+          zoom: 1.5,
+          duration: 800,
+        });
+        setFocusNodeId(null);
+      }
+    }
+  }, [focusNodeId, getNodes, setCenter, setFocusNodeId]);
 
   return (
     <div className="flex flex-col h-full w-full relative" ref={containerRef}>
@@ -478,6 +552,7 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         maxZoom={10}
         attributionPosition="bottom-right"
         onMove={(_, viewport) => onMove(viewport)}
+        onMoveEnd={onMoveEnd}
         className="bg-zinc-50 dark:bg-zinc-950 transition-colors duration-200"
         edgesFocusable={false}
         elementsSelectable={true}

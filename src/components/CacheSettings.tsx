@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Trash2, Database, FolderOpen } from 'lucide-react';
+import { Trash2, Database, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,

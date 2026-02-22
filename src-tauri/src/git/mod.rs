@@ -19,6 +19,43 @@ pub struct CommitResponse {
     has_more: bool,
 }
 
+#[derive(Serialize)]
+pub struct GitRef {
+    pub name: String,
+    pub commit_id: String,
+}
+
+#[tauri::command]
+pub fn get_all_refs(repo_path: String) -> Result<Vec<GitRef>, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    let mut refs = Vec::new();
+
+    if let Ok(repo_refs) = repo.references() {
+        for r in repo_refs {
+            if let Ok(r) = r {
+                if let Some(name) = r.name() {
+                    if let Some(target) = r.target() {
+                        let short_name = if name.starts_with("refs/heads/") {
+                            name.replace("refs/heads/", "")
+                        } else if name.starts_with("refs/remotes/") {
+                            name.replace("refs/remotes/", "")
+                        } else {
+                            name.to_string()
+                        };
+
+                        refs.push(GitRef {
+                            name: short_name,
+                            commit_id: target.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(refs)
+}
+
 #[tauri::command]
 pub fn get_commits(
     repo_path: String,

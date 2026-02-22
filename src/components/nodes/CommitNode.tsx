@@ -1,13 +1,7 @@
 import { Handle, Position, NodeProps, Node } from "@xyflow/react";
 import { cn } from "@/lib/utils";
-import { GitCommit } from "@/lib/graphUtils";
-import {
-  GitBranch,
-  Tag,
-  Copy,
-  GitCommitVertical,
-  ArrowLeftRight,
-} from "lucide-react";
+import { GitCommit, getBranchHue } from "@/lib/graphUtils";
+import { GitBranch, Tag, Copy, ArrowLeftRight } from "lucide-react";
 import { useGitGraphStore } from "@/store/gitGraphStore";
 import {
   Popover,
@@ -27,14 +21,6 @@ type CommitNodeData = Node<
   },
   "commit"
 >["data"];
-
-function getBranchHue(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash % 360);
-}
 
 export function CommitNode({
   data,

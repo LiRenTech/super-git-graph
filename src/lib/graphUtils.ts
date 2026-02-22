@@ -1,5 +1,5 @@
 import dagre from "@dagrejs/dagre";
-import { Node, Edge, Position } from "@xyflow/react";
+import { Node, Edge } from "@xyflow/react";
 
 export interface GitCommit {
   id: string;
@@ -8,6 +8,14 @@ export interface GitCommit {
   date: number;
   parents: string[];
   refs: string[];
+}
+
+export function getBranchHue(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash % 360);
 }
 
 const nodeWidth = 60; // Just enough for the circle + padding
