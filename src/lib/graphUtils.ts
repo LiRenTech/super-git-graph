@@ -10,6 +10,74 @@ export interface GitCommit {
   refs: string[];
 }
 
+export interface LayoutedElements {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+export function getLayoutedElements(commits: GitCommit[]): LayoutedElements {
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: "TB", ranksep: 50, nodesep: 20 });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  // Add nodes to the graph
+  commits.forEach((commit) => {
+    g.setNode(commit.id, { width: 100, height: 60 });
+  });
+
+  // Add edges to the graph
+  commits.forEach((commit) => {
+    if (commit.parents) {
+      commit.parents.forEach((parentId) => {
+        // Only add edge if parent exists in our commits list
+        if (commits.some((c) => c.id === parentId)) {
+          g.setEdge(parentId, commit.id);
+        }
+      });
+    }
+  });
+
+  dagre.layout(g);
+
+  // Create nodes and edges for React Flow
+  const nodes: Node[] = commits.map((commit) => {
+    const nodeWithPosition = g.node(commit.id);
+    return {
+      id: commit.id,
+      type: "commit",
+      position: {
+        x: nodeWithPosition.x - 50, // Center the node
+        y: nodeWithPosition.y - 30,
+      },
+      data: {
+        label: commit.message,
+        commit: commit,
+        // Add repoPath to node data so CommitNode can access it
+        repoPath: "", // Will be set in GitGraphView
+      },
+    };
+  });
+
+  const edges: Edge[] = [];
+  commits.forEach((commit) => {
+    if (commit.parents) {
+      commit.parents.forEach((parentId) => {
+        if (commits.some((c) => c.id === parentId)) {
+          edges.push({
+            id: `${parentId}-${commit.id}`,
+            source: parentId,
+            target: commit.id,
+            animated: false,
+            style: { stroke: "#94a3b8" },
+          });
+        }
+      });
+    }
+  });
+
+  return { nodes, edges };
+}
+
 export function getBranchHue(name: string) {
   // Normalize name to ensure origin/abc and abc have same color
   // Remove common remote prefixes
@@ -24,74 +92,3 @@ export function getBranchHue(name: string) {
 
 const nodeWidth = 60; // Just enough for the circle + padding
 const nodeHeight = 60; // Enough for circle + label below
-
-export const getLayoutedElements = (commits: GitCommit[]) => {
-	const dagreGraph = new dagre.graphlib.Graph();
-	dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-	// Rankdir: TB (Top-Bottom) which results in diagonal with proper node configuration
-	// Nodesep: Separation between nodes in the same rank.
-	// Ranksep: Separation between ranks.
-	dagreGraph.setGraph({
-		rankdir: "TB",
-		nodesep: 20,
-		ranksep: 20,
-	});
-
-	commits.forEach((commit) => {
-		dagreGraph.setNode(commit.id, { width: nodeWidth, height: nodeHeight });
-		commit.parents.forEach((parentId) => {
-			// Edge direction: Parent -> Child
-			dagreGraph.setEdge(parentId, commit.id);
-		});
-	});
-
-	dagre.layout(dagreGraph);
-
-	const nodes: Node[] = commits.map((commit) => {
-		const nodeWithPosition = dagreGraph.node(commit.id);
-		// Add offset to create diagonal effect if needed, though DAGre usually handles hierarchy well.
-		// For a strict diagonal, we might need custom positioning, but let's try standard DAG layout first
-		// as it handles branches better than a hardcoded diagonal.
-		return {
-			id: commit.id,
-			type: "commit", // Use our custom node type
-			position: {
-				x: nodeWithPosition.x - nodeWidth / 2,
-				y: nodeWithPosition.y - nodeHeight / 2,
-			},
-			data: {
-				label: commit.message,
-				commit: commit,
-			},
-			// Remove inline styles as we use Tailwind in the component
-			style: {},
-		};
-	});
-
-	const edges: Edge[] = [];
-	commits.forEach((commit) => {
-		commit.parents.forEach((parentId, index) => {
-			const isMergeParent = index > 0;
-
-			edges.push({
-				id: `e${parentId}-${commit.id}`,
-				source: parentId,
-				target: commit.id,
-				type: "default", // Bezier curve is default in React Flow
-				animated: false,
-				style: {
-					stroke: "var(--edge-stroke, #888)",
-					strokeWidth: 2,
-					strokeDasharray: isMergeParent ? "5 5" : "none",
-					cursor: "default",
-					pointerEvents: "none",
-				},
-				focusable: false,
-				selectable: false,
-			});
-		});
-	});
-
-	return { nodes, edges };
-};

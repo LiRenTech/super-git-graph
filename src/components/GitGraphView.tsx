@@ -52,6 +52,8 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
     diffMode,
     endDiffMode,
     setDiffTarget,
+    setRepoPath,
+    setRefreshCallback,
   } = useGitGraphStore();
   // const { showCoordinates, setShowCoordinates } = useGitGraphStore();
 
@@ -121,7 +123,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
   );
 
   const fetchCommits = useCallback(
-    async (path: string, isLoadMore = false) => {
+    async (path: string, isLoadMore = false, preserveViewport = false) => {
       try {
         setLoading(true);
         // If it's load more, we want to fetch the next batch.
@@ -169,6 +171,15 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
         const allCommits = [...loadedCommits.current].reverse();
         const layoutData = getLayoutedElements(allCommits);
 
+        // Add repoPath to node data
+        const nodesWithRepoPath = layoutData.nodes.map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            repoPath: path
+          }
+        }));
+
         // Load cached layout
         const cachedLayout = await layoutService.getLayout(path);
 
@@ -192,7 +203,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
               : null;
 
             // Anchor from New Dagre Layout (Default position for uncached nodes)
-            const anchorNodeNewDagre = layoutData.nodes.find(
+            const anchorNodeNewDagre = nodesWithRepoPath.find(
               (n) => n.id === previousOldestCommitId,
             );
 
@@ -214,7 +225,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
               cacheDeltaY = anchorNodeCurrent.position.y - anchorNodeCachePos.y;
             }
 
-            return layoutData.nodes.map((newNode) => {
+            return nodesWithRepoPath.map((newNode) => {
               // 1. If in current view (dragged by user previously in this session), use current pos
               const existingNode = currentNodesMap.get(newNode.id);
               if (existingNode) {
@@ -260,13 +271,13 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
               finalPositions.set(id, pos);
             });
 
-            for (const node of layoutData.nodes) {
+            for (const node of nodesWithRepoPath) {
               if (finalPositions.has(node.id)) {
                 const pos = finalPositions.get(node.id)!;
                 resolvedNodes.push({ ...node, position: pos });
               } else {
                 // Not cached. Try to align with parents.
-                const nodeData = node.data as { commit: GitCommit };
+                const nodeData = node.data as { commit: GitCommit; repoPath: string };
                 const parents = nodeData.commit.parents;
                 let delta = { x: 0, y: 0 };
 
@@ -276,7 +287,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
                     if (finalPositions.has(pid)) {
                       const pFinal = finalPositions.get(pid)!;
                       // Find parent's dagre position
-                      const pDagre = layoutData.nodes.find(
+                      const pDagre = nodesWithRepoPath.find(
                         (n) => n.id === pid,
                       )?.position;
                       if (pDagre) {
@@ -302,7 +313,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
             }
             setNodes(resolvedNodes);
           } else {
-            setNodes(layoutData.nodes);
+            setNodes(nodesWithRepoPath);
           }
         }
 
@@ -312,8 +323,8 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
           console.log("Updating edges:", layoutData.edges.length);
           setEdges([...layoutData.edges]);
 
-          // Fit view after edges are set
-          if (!isLoadMore) {
+          // Fit view after edges are set, but only if we're not preserving viewport
+          if (!isLoadMore && !preserveViewport) {
             setTimeout(() => fitView({ padding: 0.2 }), 50);
           }
         }, 10);
@@ -325,6 +336,19 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
     },
     [setNodes, setEdges, fitView],
   );
+
+  // Set repoPath in store when component mounts or repoPath changes
+  useEffect(() => {
+    setRepoPath(repoPath);
+  }, [repoPath, setRepoPath]);
+
+  // Set refresh callback
+  useEffect(() => {
+    setRefreshCallback((path) => fetchCommits(path, false, true)); // preserveViewport = true for checkout refresh
+    return () => {
+      setRefreshCallback(() => {});
+    };
+  }, [fetchCommits, setRefreshCallback]);
 
   // Initial load
   useEffect(() => {

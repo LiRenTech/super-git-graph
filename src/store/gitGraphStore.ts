@@ -23,6 +23,8 @@ interface GitGraphState {
     sourceCommitId: string | null;
     targetCommitId: string | null;
   };
+  // Add refresh callback with repoPath parameter
+  onRefreshRequest: ((repoPath: string) => void) | null;
   setRepoPath: (path: string) => void;
   setGraphData: (nodes: Node[], edges: Edge[]) => void;
   setAllRefs: (refs: GitRef[]) => void;
@@ -36,9 +38,14 @@ interface GitGraphState {
   startDiffMode: (sourceCommitId: string) => void;
   endDiffMode: () => void;
   setDiffTarget: (targetCommitId: string) => void;
+  checkoutCommit: (repoPath: string, commitId: string) => Promise<void>;
+  // Add method to set refresh callback
+  setRefreshCallback: (callback: (repoPath: string) => void) => void;
+  // Add method to trigger refresh
+  refreshGraph: () => void;
 }
 
-export const useGitGraphStore = create<GitGraphState>((set) => ({
+export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   repoPath: null,
   nodes: [],
   edges: [],
@@ -55,6 +62,7 @@ export const useGitGraphStore = create<GitGraphState>((set) => ({
     sourceCommitId: null,
     targetCommitId: null,
   },
+  onRefreshRequest: null,
   setRepoPath: (path) => set({ repoPath: path }),
   setGraphData: (nodes, edges) => set({ nodes, edges }),
   setAllRefs: (refs) => set({ allRefs: refs }),
@@ -88,4 +96,33 @@ export const useGitGraphStore = create<GitGraphState>((set) => ({
         targetCommitId,
       },
     })),
+  checkoutCommit: async (repoPath: string, commitId: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    try {
+      // Import invoke here to avoid circular dependencies
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('checkout_commit', {
+        repoPath,
+        commitId,
+      });
+      
+      // Trigger refresh after successful checkout
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to checkout commit:', error);
+      throw error;
+    }
+  },
+  setRefreshCallback: (callback: (repoPath: string) => void) => set({ onRefreshRequest: callback }),
+  refreshGraph: () => {
+    const { onRefreshRequest, repoPath } = get();
+    if (onRefreshRequest && repoPath) {
+      onRefreshRequest(repoPath);
+    }
+  },
 }));

@@ -1,3 +1,5 @@
+use std::fs;
+
 use git2::{Oid, Repository, Sort, StatusOptions, ObjectType};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -10,6 +12,8 @@ pub struct GitCommit {
     date: i64,
     parents: Vec<String>,
     refs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    head_type: Option<String>, // "detached" or "branch"
 }
 
 #[derive(Serialize)]
@@ -79,7 +83,33 @@ pub fn get_commits(
 
     walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)
         .map_err(|e| e.to_string())?;
-    walk.push_head().map_err(|e| e.to_string())?;
+
+    // Instead of only pushing HEAD, push all references to ensure we get complete history
+    // This ensures that even in detached HEAD state, we can see the full commit graph
+    
+    // Push HEAD if it exists
+    if let Ok(head) = repo.head() {
+        if let Some(target) = head.target() {
+            walk.push(target).map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Push all local branches and tags
+    if let Ok(refs) = repo.references() {
+        for r in refs {
+            if let Ok(r) = r {
+                if let Some(name) = r.name() {
+                    // Only include local branches and tags, not remote tracking branches
+                    if name.starts_with("refs/heads/") || name.starts_with("refs/tags/") {
+                        if let Some(target) = r.target() {
+                            // Ignore errors when pushing (some refs might be invalid)
+                            let _ = walk.push(target);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Handle Stashes
     let mut stash_map = HashMap::new();
@@ -117,6 +147,41 @@ pub fn get_commits(
 
     let mut commits = Vec::new();
 
+    // Determine HEAD type by reading .git/HEAD file directly
+    let head_type = {
+        let git_dir = repo.path();
+        let head_file = git_dir.join("HEAD");
+        
+        if let Ok(content) = fs::read_to_string(&head_file) {
+            println!("DEBUG: HEAD file content: {:?}", content.trim());
+            if content.starts_with("ref: ") {
+                // Symbolic reference (branch HEAD)
+                println!("DEBUG: Detected as BRANCH HEAD from HEAD file");
+                Some("branch".to_string())
+            } else {
+                // Direct reference (detached HEAD)  
+                println!("DEBUG: Detected as DETACHED HEAD from HEAD file");
+                Some("detached".to_string())
+            }
+        } else {
+            println!("DEBUG: Could not read HEAD file");
+            // Fallback to git2 method
+            match repo.head() {
+                Ok(head) => {
+                    if head.symbolic_target().is_some() {
+                        Some("branch".to_string())
+                    } else {
+                        Some("detached".to_string())
+                    }
+                }
+                Err(_) => None,
+            }
+        }
+    };
+
+    // Get HEAD target OID for comparison
+    let head_target_oid = repo.head().ok().and_then(|h| h.target());
+
     // Check for uncommitted changes (only for first page)
     if skip == 0 {
         let mut status_opts = StatusOptions::new();
@@ -144,6 +209,7 @@ pub fn get_commits(
                     date: chrono::Utc::now().timestamp(),
                     parents: vec![parent_id],
                     refs: vec![],
+                    head_type: None,
                 });
             }
         }
@@ -171,11 +237,9 @@ pub fn get_commits(
         let mut refs = Vec::new();
 
         // Check if HEAD points to this commit
-        if let Ok(head) = repo.head() {
-            if let Some(target) = head.target() {
-                if target == oid {
-                    refs.push("HEAD".to_string());
-                }
+        if let Some(target_oid) = head_target_oid {
+            if target_oid == oid {
+                refs.push("HEAD".to_string());
             }
         }
 
@@ -235,6 +299,13 @@ pub fn get_commits(
             continue;
         }
 
+        // Set head_type only for the commit that HEAD points to
+        let commit_head_type = if refs.contains(&"HEAD".to_string()) {
+            head_type.clone()
+        } else {
+            None
+        };
+
         commits.push(GitCommit {
             id: oid.to_string(),
             message,
@@ -242,6 +313,7 @@ pub fn get_commits(
             date,
             parents,
             refs,
+            head_type: commit_head_type,
         });
 
         count += 1;
@@ -366,4 +438,47 @@ fn get_file_content(
 
     let blob = obj.as_blob().unwrap();
     String::from_utf8_lossy(blob.content()).to_string()
+}
+
+#[tauri::command]
+pub fn checkout_commit(repo_path: String, commit_id: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    
+    // Handle special case for working-copy (shouldn't happen, but just in case)
+    if commit_id == "working-copy" {
+        return Err("Cannot checkout working-copy".to_string());
+    }
+    
+    // Parse the commit ID
+    let oid = Oid::from_str(&commit_id).map_err(|e| {
+        format!("Invalid commit ID '{}': {}", commit_id, e)
+    })?;
+    
+    // Find the commit object to verify it exists
+    let _commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+    
+    // Create an object from the commit
+    let obj = repo.find_object(oid, None).map_err(|e| e.to_string())?;
+    
+    // Checkout the commit without force
+    // This will behave like standard git checkout
+    let mut checkout_builder = git2::build::CheckoutBuilder::new();
+    // Remove force() to allow standard git behavior
+    // This will fail if there are uncommitted changes that would be overwritten
+    
+    match repo.checkout_tree(&obj, Some(&mut checkout_builder)) {
+        Ok(()) => {
+            // Update HEAD to point to this commit (detached HEAD state)
+            repo.set_head_detached(oid).map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Err(e) => {
+            // Provide more helpful error message
+            if e.message().contains("conflict") || e.message().contains("dirty") {
+                Err("Cannot checkout: You have uncommitted changes that would be overwritten. Please commit or stash your changes first.".to_string())
+            } else {
+                Err(format!("Failed to checkout commit: {}", e))
+            }
+        }
+    }
 }

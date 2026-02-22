@@ -1,4 +1,4 @@
-import { Handle, Position, NodeProps, Node } from "@xyflow/react";
+import { Handle, Position, NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { GitCommit, getBranchHue } from "@/lib/graphUtils";
 import { GitBranch, Tag, Copy, ArrowLeftRight, GitCompare } from "lucide-react";
@@ -13,35 +13,40 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useState } from "react";
 import { toast } from "sonner";
 
-// We need to define the type of data our node expects
-type CommitNodeData = Node<
-  {
+// Remove the interface and use inline typing
+export function CommitNode(props: NodeProps) {
+  const { data, selected, positionAbsoluteX, positionAbsoluteY, id } = props;
+  
+  // Use unknown first, then cast to the expected type
+  const typedData = data as unknown as {
     label: string;
-    commit: GitCommit;
-  },
-  "commit"
->["data"];
+    commit: GitCommit & { head_type?: string };
+    repoPath: string;
+  };
+  
+  // Debug logging
+  console.log("Commit data:", typedData.commit.id, "HEAD refs:", typedData.commit.refs, "head_type:", typedData.commit.head_type);
+  
+  // Determine HEAD type using backend-provided head_type field
+  const hasHeadRef = typedData.commit?.refs?.includes("HEAD") || false;
+  const headType = typedData.commit?.head_type; // "detached" or "branch" or undefined
+  
+  const isDetachedHead = hasHeadRef && headType === "detached";
+  const isBranchHead = hasHeadRef && headType === "branch";
+  
+  const branchRefs = typedData.commit?.refs?.filter(
+    (r: string) => r !== "HEAD" && !r.startsWith("refs/tags/")
+  ) || [];
+  const tagRefs = typedData.commit?.refs?.filter(
+    (r: string) => r.startsWith("refs/tags/")
+  ) || [];
+  
+  const isMerge = typedData.commit?.parents && typedData.commit.parents.length > 1;
+  const isRoot = !typedData.commit?.parents || typedData.commit.parents.length === 0;
+  const isUncommitted = typedData.commit?.id === "working-copy";
+  const isStash = typedData.commit?.refs?.some((r: string) => r.startsWith("stash@"));
 
-export function CommitNode({
-  data,
-  selected,
-  positionAbsoluteX,
-  positionAbsoluteY,
-  id,
-}: NodeProps<Node<CommitNodeData, "commit">>) {
-  const isHead = data.commit?.refs?.includes("HEAD");
-  const branches =
-    data.commit?.refs?.filter(
-      (r) => r !== "HEAD" && !r.startsWith("refs/tags/"),
-    ) || [];
-  const tags =
-    data.commit?.refs?.filter((r) => r.startsWith("refs/tags/")) || [];
-  const isMerge = data.commit?.parents && data.commit.parents.length > 1;
-  const isRoot = !data.commit?.parents || data.commit.parents.length === 0;
-  const isUncommitted = data.commit?.id === "working-copy";
-  const isStash = data.commit?.refs?.some((r) => r.startsWith("stash@"));
-
-  const { showHash, showMessage, showCoordinates, startDiffMode, diffMode } = useGitGraphStore();
+  const { showHash, showMessage, showCoordinates, startDiffMode, diffMode, checkoutCommit } = useGitGraphStore();
   const isDiffSource = diffMode.active && diffMode.sourceCommitId === id;
   const [popoverOpen, setPopoverOpen] = useState(false);
 
@@ -52,6 +57,35 @@ export function CommitNode({
     } catch (err) {
       console.error("Failed to copy:", err);
       toast.error("Failed to copy to clipboard");
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (isUncommitted) {
+      toast.error("Cannot checkout uncommitted changes");
+      return;
+    }
+    
+    try {
+      setPopoverOpen(false);
+      await checkoutCommit(typedData.repoPath, typedData.commit.id);
+      toast.success("Successfully checked out commit");
+    } catch (error) {
+      console.error("Checkout failed:", error);
+      toast.error("Failed to checkout commit");
+    }
+  };
+
+  // Function to handle branch click
+  const handleBranchClick = async (branchName: string) => {
+    try {
+      // TODO: Implement branch checkout functionality
+      // This will require a new Tauri command to execute `git checkout <branch>`
+      toast.info(`Switching to branch: ${branchName}`);
+      // For now, just show a toast message
+    } catch (error) {
+      console.error("Failed to switch branch:", error);
+      toast.error("Failed to switch branch");
     }
   };
 
@@ -77,10 +111,12 @@ export function CommitNode({
             isConnectable={false}
           />
 
-          {isHead && (
-            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded text-[10px] font-medium shadow-sm whitespace-nowrap z-20">
-              HEAD
-              <div className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-blue-200 dark:border-l-blue-800" />
+          {/* Detached HEAD Indicator - Only shown for detached HEAD */}
+          {isDetachedHead && (
+            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 flex items-center gap-1 px-2 py-0.5 border border-red-500 dark:border-red-600 rounded text-[10px] font-medium shadow-sm whitespace-nowrap z-20 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>HEAD (detached)</span>
+              <div className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-red-500 dark:border-l-red-600" />
             </div>
           )}
 
@@ -89,27 +125,53 @@ export function CommitNode({
             className="absolute bottom-full mb-2 flex flex-col items-center gap-1 origin-bottom"
             style={{ transform: "scale(var(--label-scale, 1))" }}
           >
-            {branches.map((branch) => {
+            {branchRefs.map((branch: string) => {
               const hue = getBranchHue(branch);
+              const isCurrentBranch = isBranchHead && branchRefs.length === 1 && branchRefs[0] === branch;
+              
               return (
                 <div
                   key={branch}
-                  className="relative flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium shadow-sm whitespace-nowrap border
-                bg-[hsl(var(--branch-hue),85%,96%)] text-[hsl(var(--branch-hue),80%,30%)] border-[hsl(var(--branch-hue),60%,85%)]
-                dark:bg-[hsl(var(--branch-hue),60%,20%)] dark:text-[hsl(var(--branch-hue),80%,90%)] dark:border-[hsl(var(--branch-hue),60%,30%)]"
+                  className={cn(
+                    "relative flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium shadow-sm whitespace-nowrap border cursor-pointer hover:opacity-80 transition-all duration-150",
+                    // Light theme colors
+                    "bg-[hsl(var(--branch-hue),85%,96%)] text-[hsl(var(--branch-hue),80%,30%)] border-[hsl(var(--branch-hue),60%,85%)]",
+                    // Dark theme colors  
+                    "dark:bg-[hsl(var(--branch-hue),60%,20%)] dark:text-[hsl(var(--branch-hue),80%,90%)] dark:border-[hsl(var(--branch-hue),60%,30%)]",
+                    // Current branch highlight (light theme)
+                    isCurrentBranch && "ring-2 ring-blue-300 dark:ring-blue-700"
+                  )}
                   style={{ "--branch-hue": hue } as React.CSSProperties}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleBranchClick(branch);
+                  }}
                 >
                   <GitBranch className="w-3 h-3" />
                   {branch}
                   <div
-                    className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent 
-                border-t-[hsl(var(--branch-hue),60%,85%)] dark:border-t-[hsl(var(--branch-hue),60%,30%)]"
+                    className={cn(
+                      "absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent",
+                      // Light theme triangle
+                      "border-t-[hsl(var(--branch-hue),60%,85%)]",
+                      // Dark theme triangle
+                      "dark:border-t-[hsl(var(--branch-hue),60%,30%)]"
+                    )}
                   />
+                  
+                  {/* Branch HEAD Indicator - Only shown for the current branch */}
+                  {isCurrentBranch && (
+                    <div className="absolute -left-full top-1/2 -translate-y-1/2 -ml-3 flex items-center gap-1 px-2 py-0.5 border border-blue-500 dark:border-blue-600 rounded text-[10px] font-medium shadow-sm whitespace-nowrap bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span>HEAD</span>
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-blue-500 dark:border-r-blue-600" />
+                    </div>
+                  )}
                 </div>
               );
             })}
 
-            {tags.map((tag) => (
+            {tagRefs.map((tag: string) => (
               <div
                 key={tag}
                 className="relative flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800 rounded text-[10px] font-medium shadow-sm whitespace-nowrap"
@@ -146,11 +208,13 @@ export function CommitNode({
               "bg-background",
               isStash ? "rounded-md" : "rounded-full",
               isRoot ? "w-6 h-6 border-2 border-primary" : "w-4 h-4 border-2",
-              isHead
-                ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900"
-                : isRoot
-                  ? "border-primary"
-                  : "border-primary",
+              isDetachedHead
+                ? "border-red-500 ring-2 ring-red-200 dark:ring-red-900"
+                : isBranchHead
+                  ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900"
+                  : isRoot
+                    ? "border-primary"
+                    : "border-primary",
               isUncommitted
                 ? "border-dashed border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-zinc-800"
                 : "",
@@ -169,10 +233,13 @@ export function CommitNode({
               <div className="absolute inset-0 rounded-full border-2 border-primary m-0.5" />
             )}
             {isRoot && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
-            {isHead && (
+            {isDetachedHead && (
+              <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+            )}
+            {isBranchHead && !isDetachedHead && (
               <div className="absolute inset-0 m-auto w-1.5 h-1.5 bg-blue-500 rounded-full" />
             )}
-            {isMerge && !isHead && !isStash && (
+            {isMerge && !isDetachedHead && !isBranchHead && !isStash && (
               <span className="text-[8px] font-bold text-foreground leading-none">
                 M
               </span>
@@ -193,7 +260,7 @@ export function CommitNode({
                   isMerge && !selected && "opacity-50",
                 )}
               >
-                {data.label}
+                {typedData.label}
               </p>
             )}
             {showHash && (
@@ -204,7 +271,7 @@ export function CommitNode({
                   isMerge && !selected && "opacity-40",
                 )}
               >
-                {data.commit?.id.substring(0, 7)}
+                {typedData.commit?.id.substring(0, 7)}
               </p>
             )}
           </div>
@@ -232,13 +299,19 @@ export function CommitNode({
           className="justify-start gap-2 h-8"
           onClick={() => {
             setPopoverOpen(false);
-            startDiffMode(data.commit.id);
+            startDiffMode(typedData.commit.id);
           }}
         >
           <GitCompare className="w-4 h-4" />
           <span className="text-xs">Diff with another commit</span>
         </Button>
-        <Button variant="ghost" size="sm" className="justify-start gap-2 h-8">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="justify-start gap-2 h-8"
+          onClick={handleCheckout}
+          disabled={isUncommitted}
+        >
           <ArrowLeftRight className="w-4 h-4" />
           <span className="text-xs">Checkout this commit</span>
         </Button>
@@ -246,7 +319,7 @@ export function CommitNode({
           variant="ghost"
           size="sm"
           className="justify-start gap-2 h-8"
-          onClick={() => copyToClipboard(data.commit?.message || "", "message")}
+          onClick={() => copyToClipboard(typedData.commit?.message || "", "message")}
         >
           <Copy className="w-4 h-4" />
           <span className="text-xs truncate">Copy Message</span>
@@ -255,7 +328,7 @@ export function CommitNode({
           variant="ghost"
           size="sm"
           className="justify-start gap-2 h-8"
-          onClick={() => copyToClipboard(data.commit?.id || "", "hash")}
+          onClick={() => copyToClipboard(typedData.commit?.id || "", "hash")}
         >
           <Copy className="w-4 h-4" />
           <span className="text-xs">Copy Hash</span>
