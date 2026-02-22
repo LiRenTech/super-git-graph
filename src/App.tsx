@@ -1,183 +1,142 @@
-import { useState, useCallback, useEffect } from "react";
-import {
-	ReactFlow,
-	Background,
-	Controls,
-	MiniMap,
-	useNodesState,
-	useEdgesState,
-	addEdge,
-	Connection,
-	Edge,
-	Node,
-	BackgroundVariant,
-	NodeTypes,
-} from "@xyflow/react";
+import { useState, useEffect } from "react";
+import { ReactFlowProvider } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-	Search,
-	RefreshCw,
-	GitBranch,
-	FolderOpen,
-	Sun,
-	Moon,
-} from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
+import { GitBranch, FolderOpen, Sun, Moon, Plus, X } from "lucide-react";
+import { open } from '@tauri-apps/plugin-dialog';
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getLayoutedElements, GitCommit } from "@/lib/graphUtils";
-import { CommitNode } from "@/components/nodes/CommitNode";
-
-// Define node types outside component to prevent re-creation
-const nodeTypes: NodeTypes = {
-	commit: CommitNode,
-};
+import { GitGraphView } from "@/components/GitGraphView";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 function App() {
-	const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-	const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-	const [repoPath, setRepoPath] = useState<string | null>(null);
-	const [searchQuery, setSearchQuery] = useState("");
-	const [loading, setLoading] = useState(false);
-	const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [openRepos, setOpenRepos] = useState<string[]>([]);
+  const [activeRepo, setActiveRepo] = useState<string | null>(null);
 
-	// Initialize dark mode
-	useEffect(() => {
-		if (isDarkMode) {
-			document.documentElement.classList.add("dark");
-		} else {
-			document.documentElement.classList.remove("dark");
-		}
-	}, [isDarkMode]);
+  // Initialize dark mode
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
 
-	const toggleTheme = () => setIsDarkMode(!isDarkMode);
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-	const fetchCommits = async (path: string) => {
-		try {
-			setLoading(true);
-			const commits = await invoke<GitCommit[]>("get_commits", {
-				repoPath: path,
-				limit: 100,
-			});
-			// Reverse commits to show oldest first (Left -> Right)
-			const layoutData = getLayoutedElements(commits.reverse());
-			setNodes(layoutData.nodes);
-			setEdges(layoutData.edges);
-		} catch (error) {
-			console.error("Failed to fetch commits:", error);
-		} finally {
-			setLoading(false);
-		}
-	};
+  const handleOpenRepo = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Open Git Repository',
+    });
 
-	const handleOpenRepo = async () => {
-		const selected = await open({
-			directory: true,
-			multiple: false,
-			title: "Open Git Repository",
-		});
+    if (selected && typeof selected === 'string') {
+      if (!openRepos.includes(selected)) {
+        setOpenRepos([...openRepos, selected]);
+      }
+      setActiveRepo(selected);
+    }
+  };
 
-		if (selected && typeof selected === "string") {
-			setRepoPath(selected);
-			await fetchCommits(selected);
-		}
-	};
+  const closeRepo = (e: React.MouseEvent, path: string) => {
+    e.stopPropagation();
+    const newRepos = openRepos.filter(p => p !== path);
+    setOpenRepos(newRepos);
+    if (activeRepo === path) {
+      setActiveRepo(newRepos.length > 0 ? newRepos[newRepos.length - 1] : null);
+    }
+  };
 
-	const handleRefresh = () => {
-		if (repoPath) {
-			fetchCommits(repoPath);
-		}
-	};
+  return (
+    <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
+      {/* Top Bar */}
+      <header className="h-14 border-b flex items-center px-4 justify-between bg-card z-10 shrink-0">
+        <div className="flex items-center gap-4 overflow-hidden">
+          <div className="flex items-center gap-2 font-bold text-lg shrink-0">
+            <GitBranch className="w-5 h-5" />
+            <span>Super Git Graph</span>
+          </div>
+          
+          <div className="h-6 w-px bg-border mx-2 shrink-0" />
+          
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-2"
+              onClick={handleOpenRepo}
+            >
+              <FolderOpen className="w-4 h-4" />
+              Open Repo
+            </Button>
+            
+            <Button variant="ghost" size="icon" onClick={toggleTheme} title="Toggle Theme">
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+      </header>
 
-	const onConnect = useCallback(
-		(params: Connection) => setEdges((eds) => addEdge(params, eds)),
-		[setEdges],
-	);
+      {/* Tabs and Main Content */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {openRepos.length > 0 ? (
+          <Tabs 
+            value={activeRepo || undefined} 
+            onValueChange={setActiveRepo}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
+            <div className="border-b bg-muted/40 px-4 pt-2">
+              <TabsList className="bg-transparent h-auto p-0 gap-2 w-full justify-start overflow-x-auto no-scrollbar">
+                {openRepos.map((path) => (
+                  <TabsTrigger 
+                    key={path} 
+                    value={path}
+                    className="data-[state=active]:bg-background data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-border rounded-t-md px-3 py-2 h-9 flex items-center gap-2 group min-w-[120px] max-w-[200px]"
+                  >
+                    <span className="truncate text-xs">{path.split('/').pop()}</span>
+                    <div 
+                      role="button"
+                      onClick={(e) => closeRepo(e, path)}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted rounded-sm transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </div>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
 
-	return (
-		<div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
-			{/* Top Bar */}
-			<header className="h-14 border-b flex items-center px-4 justify-between bg-card z-10">
-				<div className="flex items-center gap-4">
-					<div className="flex items-center gap-2 font-bold text-lg">
-						<GitBranch className="w-5 h-5" />
-						<span>Super Git Graph</span>
-					</div>
-
-					<div className="h-6 w-px bg-border mx-2" />
-
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							className="gap-2"
-							onClick={handleOpenRepo}
-						>
-							<FolderOpen className="w-4 h-4" />
-							{repoPath ? repoPath.split("/").pop() : "Open Repo"}
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							title="Refresh"
-							onClick={handleRefresh}
-							disabled={!repoPath || loading}
-						>
-							<RefreshCw
-								className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-							/>
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={toggleTheme}
-							title="Toggle Theme"
-						>
-							{isDarkMode ? (
-								<Sun className="w-4 h-4" />
-							) : (
-								<Moon className="w-4 h-4" />
-							)}
-						</Button>
-					</div>
-				</div>
-
-				<div className="flex items-center gap-2 w-1/3 max-w-sm">
-					<div className="relative w-full">
-						<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-						<Input
-							type="search"
-							placeholder="Search commits..."
-							className="pl-8 h-9"
-							value={searchQuery}
-							onChange={(e) => setSearchQuery(e.target.value)}
-						/>
-					</div>
-				</div>
-			</header>
-
-			{/* Main Canvas Area */}
-			<main className="flex-1 relative">
-				<ReactFlow
-					nodes={nodes}
-					edges={edges}
-					onNodesChange={onNodesChange}
-					onEdgesChange={onEdgesChange}
-					nodesConnectable={false}
-					nodesDraggable={true}
-					nodeTypes={nodeTypes}
-					fitView
-					attributionPosition="bottom-right"
-					className="bg-slate-50 dark:bg-slate-900 transition-colors duration-200"
-				>
-					<Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-					<Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-100 dark:text-slate-100 [&>button]:dark:bg-slate-800 [&>button]:dark:border-slate-700 [&>button]:dark:fill-slate-100 [&>button:hover]:dark:bg-slate-700" />
-				</ReactFlow>
-			</main>
-		</div>
-	);
+            {openRepos.map((path) => (
+              <TabsContent 
+                key={path} 
+                value={path} 
+                className="flex-1 m-0 p-0 overflow-hidden relative"
+                forceMount={true} // Keep mounted to preserve graph state
+                hidden={activeRepo !== path} // Hide instead of unmount
+              >
+                <div className="w-full h-full">
+                  <ReactFlowProvider>
+                    <GitGraphView repoPath={path} isActive={activeRepo === path} />
+                  </ReactFlowProvider>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
+            <GitBranch className="w-16 h-16 opacity-20" />
+            <p>Open a Git repository to get started</p>
+            <Button onClick={handleOpenRepo}>
+              <FolderOpen className="w-4 h-4 mr-2" />
+              Open Repository
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default App;
