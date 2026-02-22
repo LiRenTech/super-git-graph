@@ -17,7 +17,7 @@ import {
   OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { RefreshCw, GitBranch, Sun, Moon } from "lucide-react";
+import { RefreshCw, GitBranch, Sun, Moon, ArrowUp } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,11 @@ interface GitGraphViewProps {
   isActive: boolean;
 }
 
+interface CommitResponse {
+  commits: GitCommit[];
+  has_more: boolean;
+}
+
 export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   const { fitView } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,7 +48,10 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const loadedCommits = useRef<GitCommit[]>([]);
   const isCtrlPressed = useRef(false);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control" || e.key === "Meta") isCtrlPressed.current = true;
@@ -62,20 +70,49 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   }, []);
 
   const fetchCommits = useCallback(
-    async (path: string) => {
+    async (path: string, isLoadMore = false) => {
       try {
         setLoading(true);
-        const commits = await invoke<GitCommit[]>("get_commits", {
+        // If it's load more, we want to fetch the next batch.
+        // We use loadedCommits.current.length as the skip offset.
+        // But we need to handle the case where "Uncommitted Changes" is present.
+        // "Uncommitted Changes" is NOT a real commit in git history, so git2 revwalk won't count it.
+        // But our loadedCommits array INCLUDES it.
+        // So if loadedCommits has "working-copy", we should subtract 1 from skip.
+        
+        let skip = isLoadMore ? loadedCommits.current.length : 0;
+        if (isLoadMore && loadedCommits.current.some(c => c.id === 'working-copy')) {
+          skip -= 1;
+        }
+
+        const limit = 50;
+        
+        const response = await invoke<CommitResponse>("get_commits", {
           repoPath: path,
-          limit: 100,
+          limit,
+          skip: skip > 0 ? skip : undefined,
         });
+        
+        const newCommits = response.commits;
+        
+        if (isLoadMore) {
+          loadedCommits.current = [...loadedCommits.current, ...newCommits];
+        } else {
+          loadedCommits.current = newCommits;
+        }
+        
+        setHasMore(response.has_more);
+
         // Reverse commits to show oldest first (Top -> Bottom)
-        const layoutData = getLayoutedElements(commits.reverse());
+        // We use a copy for layout calculation
+        const layoutData = getLayoutedElements([...loadedCommits.current].reverse());
         setNodes(layoutData.nodes);
         setEdges(layoutData.edges);
 
-        // Fit view after a short delay to allow rendering
-        setTimeout(() => fitView({ padding: 0.2 }), 100);
+        // Fit view after a short delay to allow rendering, only on initial load/refresh
+        if (!isLoadMore) {
+          setTimeout(() => fitView({ padding: 0.2 }), 100);
+        }
       } catch (error) {
         console.error("Failed to fetch commits:", error);
       } finally {
@@ -92,6 +129,10 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
   const handleRefresh = () => {
     fetchCommits(repoPath);
+  };
+
+  const handleLoadMore = () => {
+    fetchCommits(repoPath, true);
   };
 
   // Filter nodes based on search query
@@ -193,6 +234,22 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
   return (
     <div className="flex flex-col h-full w-full relative" ref={containerRef}>
+      {/* Load More Button */}
+      {hasMore && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLoadMore}
+            disabled={loading}
+            className="bg-background/80 backdrop-blur gap-2 shadow-sm"
+          >
+            <ArrowUp className={`w-4 h-4 ${loading ? "animate-bounce" : ""}`} />
+            {loading ? "Loading..." : "Load Older Commits"}
+          </Button>
+        </div>
+      )}
+
       {/* Toolbar overlay */}
       <div className="absolute top-4 right-4 z-10 flex gap-2">
         <div className="w-64">

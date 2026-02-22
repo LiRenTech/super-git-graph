@@ -13,8 +13,15 @@ pub struct GitCommit {
     refs: Vec<String>,
 }
 
+#[derive(Serialize)]
+pub struct CommitResponse {
+    commits: Vec<GitCommit>,
+    has_more: bool,
+}
+
 #[tauri::command]
-pub fn get_commits(repo_path: String, limit: usize) -> Result<Vec<GitCommit>, String> {
+pub fn get_commits(repo_path: String, limit: usize, skip: Option<usize>) -> Result<CommitResponse, String> {
+    let skip = skip.unwrap_or(0);
     let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
     let mut walk = repo.revwalk().map_err(|e| e.to_string())?;
     
@@ -33,41 +40,47 @@ pub fn get_commits(repo_path: String, limit: usize) -> Result<Vec<GitCommit>, St
     }
 
     let mut commits = Vec::new();
-    let mut count = 0;
 
-    // Check for uncommitted changes
-    let mut status_opts = StatusOptions::new();
-    status_opts.include_untracked(true);
-    
-    let has_changes = repo
-        .statuses(Some(&mut status_opts))
-        .map(|statuses| !statuses.is_empty())
-        .unwrap_or(false);
-
-    if has_changes {
-        // Create a virtual "Uncommitted Changes" commit
-        // We need to find the current HEAD to set as parent
-        let head = repo.head().ok();
-        let head_oid = head.as_ref().and_then(|h| h.target()).map(|oid| oid.to_string());
+    // Check for uncommitted changes (only for first page)
+    if skip == 0 {
+        let mut status_opts = StatusOptions::new();
+        status_opts.include_untracked(true);
         
-        if let Some(parent_id) = head_oid {
-             commits.push(GitCommit {
-                id: "working-copy".to_string(),
-                message: "Uncommitted Changes".to_string(),
-                author: "You".to_string(),
-                date: chrono::Utc::now().timestamp(),
-                parents: vec![parent_id],
-                refs: vec![],
-            });
+        let has_changes = repo
+            .statuses(Some(&mut status_opts))
+            .map(|statuses| !statuses.is_empty())
+            .unwrap_or(false);
+
+        if has_changes {
+            // Create a virtual "Uncommitted Changes" commit
+            // We need to find the current HEAD to set as parent
+            let head = repo.head().ok();
+            let head_oid = head.as_ref().and_then(|h| h.target()).map(|oid| oid.to_string());
+            
+            if let Some(parent_id) = head_oid {
+                 commits.push(GitCommit {
+                    id: "working-copy".to_string(),
+                    message: "Uncommitted Changes".to_string(),
+                    author: "You".to_string(),
+                    date: chrono::Utc::now().timestamp(),
+                    parents: vec![parent_id],
+                    refs: vec![],
+                });
+            }
         }
     }
 
-    for oid in walk {
-        if count >= limit {
-            break;
-        }
+    // Skip commits
+    let mut walk_iter = walk.skip(skip);
+    let mut count = 0;
+
+    while count < limit {
+        let oid = match walk_iter.next() {
+            Some(Ok(oid)) => oid,
+            Some(Err(e)) => return Err(e.to_string()),
+            None => break,
+        };
         
-        let oid = oid.map_err(|e| e.to_string())?;
         let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
         
         let message = commit.summary().unwrap_or("").to_string();
@@ -127,5 +140,11 @@ pub fn get_commits(repo_path: String, limit: usize) -> Result<Vec<GitCommit>, St
         count += 1;
     }
 
-    Ok(commits)
+    // Check if there are more commits
+    let has_more = walk_iter.next().is_some();
+
+    Ok(CommitResponse {
+        commits,
+        has_more,
+    })
 }
