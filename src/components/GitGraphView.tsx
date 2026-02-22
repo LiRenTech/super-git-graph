@@ -543,7 +543,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
           source: diffMode.sourceCommitId!,
           target: diffArrowNodeId,
           type: "default",
-          animated: true,
+          animated: false,
           style: {
             stroke: "#3b82f6",
             strokeWidth: 2,
@@ -551,6 +551,8 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
           markerEnd: {
             type: "arrowclosed",
             color: "#3b82f6",
+            strokeWidth: 2,
+            orient: "auto",
           },
           focusable: false,
           selectable: false,
