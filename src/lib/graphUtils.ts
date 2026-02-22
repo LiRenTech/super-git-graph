@@ -22,8 +22,8 @@ export const getLayoutedElements = (commits: GitCommit[]) => {
 	// Ranksep: Separation between ranks.
 	dagreGraph.setGraph({
 		rankdir: "TB",
-		nodesep: 60,
-		ranksep: 60,
+		nodesep: 20,
+		ranksep: 20,
 	});
 
 	commits.forEach((commit) => {

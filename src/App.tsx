@@ -12,6 +12,7 @@ import {
   MessageSquareText,
   Eye,
   EyeOff,
+  Grid3X3,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -33,7 +34,7 @@ function App() {
   const [openRepos, setOpenRepos] = useState<string[]>([]);
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
 
-  const { showHash, showMessage, setShowHash, setShowMessage } =
+  const { showHash, showMessage, showBackground, setShowHash, setShowMessage, setShowBackground } =
     useGitGraphStore();
 
   // Initialize dark mode
@@ -159,6 +160,26 @@ function App() {
                     {showMessage
                       ? "Hide Commit Message"
                       : "Show Commit Message"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowBackground(!showBackground)}
+                    className={cn(showBackground && "bg-muted")}
+                  >
+                    <Grid3X3 className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>
+                    {showBackground
+                      ? "Hide Background Grid"
+                      : "Show Background Grid"}
                   </p>
                 </TooltipContent>
               </Tooltip>

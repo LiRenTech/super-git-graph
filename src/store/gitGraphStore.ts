@@ -7,10 +7,12 @@ interface GitGraphState {
   edges: Edge[];
   showHash: boolean;
   showMessage: boolean;
+  showBackground: boolean;
   setRepoPath: (path: string) => void;
   setGraphData: (nodes: Node[], edges: Edge[]) => void;
   setShowHash: (show: boolean) => void;
   setShowMessage: (show: boolean) => void;
+  setShowBackground: (show: boolean) => void;
 }
 
 export const useGitGraphStore = create<GitGraphState>((set) => ({
@@ -19,8 +21,10 @@ export const useGitGraphStore = create<GitGraphState>((set) => ({
   edges: [],
   showHash: true,
   showMessage: true,
+  showBackground: true,
   setRepoPath: (path) => set({ repoPath: path }),
   setGraphData: (nodes, edges) => set({ nodes, edges }),
   setShowHash: (show) => set({ showHash: show }),
   setShowMessage: (show) => set({ showMessage: show }),
+  setShowBackground: (show) => set({ showBackground: show }),
 }));
