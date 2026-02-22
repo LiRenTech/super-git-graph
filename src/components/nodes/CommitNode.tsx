@@ -230,8 +230,10 @@ export function CommitNode({
 
       <PopoverContent
         className="w-64 p-2 flex flex-col gap-1"
-        side="right"
+        side="bottom"
+        align="start"
         sideOffset={10}
+        alignOffset={20}
       >
         <Button variant="ghost" size="sm" className="justify-start gap-2 h-8">
           <ArrowLeftRight className="w-4 h-4" />
