@@ -17,13 +17,15 @@ import {
   OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { RefreshCw, GitBranch, Sun, Moon, ArrowUp } from "lucide-react";
+import { RefreshCw, GitBranch, Sun, Moon, ArrowUp, Move } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLayoutedElements, GitCommit } from "@/lib/graphUtils";
+import { layoutService } from "@/lib/layoutService";
 import { CommitNode } from "@/components/nodes/CommitNode";
+import { useGitGraphStore } from "@/store/gitGraphStore";
 
 // Define node types outside component
 const nodeTypes: NodeTypes = {
@@ -41,8 +43,9 @@ interface CommitResponse {
 }
 
 export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
-  const { fitView } = useReactFlow();
+  const { fitView, getNodes } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
+  // const { showCoordinates, setShowCoordinates } = useGitGraphStore();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -79,85 +82,199 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         // "Uncommitted Changes" is NOT a real commit in git history, so git2 revwalk won't count it.
         // But our loadedCommits array INCLUDES it.
         // So if loadedCommits has "working-copy", we should subtract 1 from skip.
-        
+
         let skip = isLoadMore ? loadedCommits.current.length : 0;
-        if (isLoadMore && loadedCommits.current.some(c => c.id === 'working-copy')) {
+        if (
+          isLoadMore &&
+          loadedCommits.current.some((c) => c.id === "working-copy")
+        ) {
           skip -= 1;
         }
 
         const limit = 50;
-        
+
         // Capture the oldest commit ID before updating loadedCommits
         // Since loadedCommits is ordered [Newest ... Oldest], the oldest is the last one.
-        const previousOldestCommitId = isLoadMore && loadedCommits.current.length > 0 
-          ? loadedCommits.current[loadedCommits.current.length - 1].id 
-          : null;
-        
+        const previousOldestCommitId =
+          isLoadMore && loadedCommits.current.length > 0
+            ? loadedCommits.current[loadedCommits.current.length - 1].id
+            : null;
+
         const response = await invoke<CommitResponse>("get_commits", {
           repoPath: path,
           limit,
           skip: skip > 0 ? skip : undefined,
         });
-        
+
         const newCommits = response.commits;
-        
+
         if (isLoadMore) {
           loadedCommits.current = [...loadedCommits.current, ...newCommits];
         } else {
           loadedCommits.current = newCommits;
         }
-        
+
         setHasMore(response.has_more);
 
         // Reverse commits to show oldest first (Top -> Bottom)
         // We use a copy for layout calculation
-        const layoutData = getLayoutedElements([...loadedCommits.current].reverse());
-        
-        if (isLoadMore && previousOldestCommitId) {
-            // Preserve existing node positions
-            setNodes((currentNodes) => {
-                const currentNodesMap = new Map(currentNodes.map(n => [n.id, n]));
-                
-                // Find the anchor node in both current and new layout
-                const anchorNodeCurrent = currentNodesMap.get(previousOldestCommitId);
-                const anchorNodeNew = layoutData.nodes.find(n => n.id === previousOldestCommitId);
-                
-                let deltaX = 0;
-                let deltaY = 0;
-                
-                if (anchorNodeCurrent && anchorNodeNew) {
-                    deltaX = anchorNodeCurrent.position.x - anchorNodeNew.position.x;
-                    deltaY = anchorNodeCurrent.position.y - anchorNodeNew.position.y;
-                }
-                
-                return layoutData.nodes.map(newNode => {
-                    const existingNode = currentNodesMap.get(newNode.id);
-                    if (existingNode) {
-                        // Keep existing position for existing nodes
-                        // But merge new data/style/etc from newNode if needed (e.g. parents might update?)
-                        // Actually, for commits, data usually doesn't change, but connections might.
-                        // We use newNode to keep the latest data structure but override position.
-                        return {
-                            ...newNode,
-                            position: existingNode.position
-                        };
-                    } else {
-                        // Apply offset to new nodes
-                        return {
-                            ...newNode,
-                            position: {
-                                x: newNode.position.x + deltaX,
-                                y: newNode.position.y + deltaY
-                            }
-                        };
-                    }
-                });
-            });
-        } else {
-            setNodes(layoutData.nodes);
+        const allCommits = [...loadedCommits.current].reverse();
+        const layoutData = getLayoutedElements(allCommits);
+
+        // Load cached layout
+        const cachedLayout = await layoutService.getLayout(path);
+
+        if (cachedLayout) {
+          console.log("Applying cached layout to nodes");
         }
 
-        setEdges(layoutData.edges);
+        if (isLoadMore && previousOldestCommitId) {
+          // Preserve existing node positions
+          setNodes((currentNodes) => {
+            const currentNodesMap = new Map(currentNodes.map((n) => [n.id, n]));
+
+            // Find the anchor node in both current and new layout
+            const anchorNodeCurrent = currentNodesMap.get(
+              previousOldestCommitId,
+            );
+            const anchorNodeNew = layoutData.nodes.find(
+              (n) => n.id === previousOldestCommitId,
+            );
+
+            let deltaX = 0;
+            let deltaY = 0;
+
+            if (anchorNodeCurrent && anchorNodeNew) {
+              deltaX = anchorNodeCurrent.position.x - anchorNodeNew.position.x;
+              deltaY = anchorNodeCurrent.position.y - anchorNodeNew.position.y;
+            }
+
+            return layoutData.nodes.map((newNode) => {
+              // 1. If in current view (dragged by user previously in this session), use current pos
+              const existingNode = currentNodesMap.get(newNode.id);
+              if (existingNode) {
+                return { ...newNode, position: existingNode.position };
+              }
+
+              // 2. If cached in store, use cached pos (for restored session)
+              // Note: If we are "loading more", usually these are OLDER nodes which might be cached?
+              // But if we are extending graph, we apply delta.
+              // If the user already laid out the older nodes in previous session, we should respect that.
+              // But we also need to align them with the newer nodes (which might have moved).
+              // This is complex.
+              // Let's prioritize:
+              // - Existing in current session > Cached > New with Delta.
+
+              if (cachedLayout && cachedLayout[newNode.id]) {
+                // If we use absolute cached pos, it might disconnect from the currently shifted graph.
+                // Unless we shift the cached pos too?
+                // If the whole graph was shifted, cached pos is "absolute".
+                // Maybe we should just trust the cache if it exists?
+                // But if the user moved the "Newer" nodes (which are anchors for Older),
+                // and we load Older cached nodes, they might be far away.
+                // So we should probably apply delta to everything that is NOT in current view?
+                // Let's stick to the Delta logic for continuity for now.
+                // If we want persistence, we should have loaded cache at INITIAL load.
+              }
+
+              // Apply offset to new nodes (relative to the anchor of this load)
+              return {
+                ...newNode,
+                position: {
+                  x: newNode.position.x + deltaX,
+                  y: newNode.position.y + deltaY,
+                },
+              };
+            });
+          });
+        } else {
+          // Initial Load or Refresh
+          // Apply cached positions if available
+          if (cachedLayout) {
+            const mergedNodes = layoutData.nodes.map((node) => {
+              if (cachedLayout[node.id]) {
+                return {
+                  ...node,
+                  position: cachedLayout[node.id],
+                };
+              }
+              // For new nodes (not in cache, e.g. new commits since last save),
+              // we need to place them relative to cached nodes.
+              // Find a parent that is cached.
+              // Since we iterate Top->Bottom (Old->New), parents of New nodes are Old nodes.
+              // Old nodes should be cached.
+              // So we can find a parent P.
+              // delta = P.cached - P.dagre.
+              // node.pos = node.dagre + delta.
+
+              // But wait, "allCommits" is reversed => Oldest first.
+              // So "parents" (which are older) come BEFORE children?
+              // In git, parent is older.
+              // In our list: [Oldest, ..., Newest].
+              // So when we process Newest (at end), its parents (Older) are already processed.
+
+              // Let's do a pass to resolve positions.
+              return node;
+            });
+
+            // We need a second pass or a map to resolve dependencies.
+            // Or just modify the array in place or use a loop.
+            const resolvedNodes = [];
+            const finalPositions = new Map<string, { x: number; y: number }>();
+
+            // Populate map with cached positions first
+            Object.entries(cachedLayout).forEach(([id, pos]) => {
+              finalPositions.set(id, pos);
+            });
+
+            for (const node of layoutData.nodes) {
+              if (finalPositions.has(node.id)) {
+                const pos = finalPositions.get(node.id)!;
+                resolvedNodes.push({ ...node, position: pos });
+              } else {
+                // Not cached. Try to align with parents.
+                const nodeData = node.data as { commit: GitCommit };
+                const parents = nodeData.commit.parents;
+                let delta = { x: 0, y: 0 };
+
+                if (parents && parents.length > 0) {
+                  // Find first parent that has a final position
+                  for (const pid of parents) {
+                    if (finalPositions.has(pid)) {
+                      const pFinal = finalPositions.get(pid)!;
+                      // Find parent's dagre position
+                      const pDagre = layoutData.nodes.find(
+                        (n) => n.id === pid,
+                      )?.position;
+                      if (pDagre) {
+                        delta = {
+                          x: pFinal.x - pDagre.x,
+                          y: pFinal.y - pDagre.y,
+                        };
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                const newPos = {
+                  x: node.position.x + delta.x,
+                  y: node.position.y + delta.y,
+                };
+
+                // Store for children
+                finalPositions.set(node.id, newPos);
+                resolvedNodes.push({ ...node, position: newPos });
+              }
+            }
+            setNodes(resolvedNodes);
+          } else {
+            setNodes(layoutData.nodes);
+          }
+        }
+
+        console.log("Updating edges:", layoutData.edges.length);
+        setEdges([...layoutData.edges]);
 
         // Fit view after a short delay to allow rendering, only on initial load/refresh
         if (!isLoadMore) {
@@ -208,12 +325,9 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
     );
   }, [searchQuery, setNodes]);
 
-  const onNodeDrag: OnNodeDrag = useCallback(
-    (_, node, nodes) => {
-      // This is now handled by onNodeDragHandler
-    },
-    [],
-  );
+  const onNodeDrag: OnNodeDrag = useCallback((_, node, nodes) => {
+    // This is now handled by onNodeDragHandler
+  }, []);
 
   // To implement this correctly with delta, we need to track the last position
   const lastNodePos = useRef<{ x: number; y: number } | null>(null);
@@ -270,6 +384,26 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
       lastNodePos.current = { ...node.position };
     },
     [edges, setNodes],
+  );
+
+  const onNodeDragStop: OnNodeDrag = useCallback(
+    (_, node, _nodes) => {
+      // Save all node positions to layout service
+      // We use getNodes() to ensure we get the latest state of all nodes,
+      // including those moved programmatically by our custom drag handler.
+      const allNodes = getNodes();
+
+      const layoutData = allNodes.reduce(
+        (acc, n) => {
+          acc[n.id] = { x: n.position.x, y: n.position.y };
+          return acc;
+        },
+        {} as { [key: string]: { x: number; y: number } },
+      );
+
+      layoutService.saveLayout(repoPath, layoutData);
+    },
+    [repoPath, getNodes],
   );
 
   const onMove = useCallback((viewport: Viewport) => {
@@ -332,6 +466,7 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         nodesDraggable={true}
         onNodeDragStart={onNodeDragStart}
         onNodeDrag={onNodeDragHandler}
+        onNodeDragStop={onNodeDragStop}
         nodeTypes={nodeTypes}
         fitView
         minZoom={0.01}

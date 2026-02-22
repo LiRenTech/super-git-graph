@@ -39,6 +39,8 @@ function getBranchHue(name: string) {
 export function CommitNode({
   data,
   selected,
+  positionAbsoluteX,
+  positionAbsoluteY,
 }: NodeProps<Node<CommitNodeData, "commit">>) {
   const isHead = data.commit?.refs?.includes("HEAD");
   const branches =
@@ -52,7 +54,7 @@ export function CommitNode({
   const isUncommitted = data.commit?.id === "working-copy";
   const isStash = data.commit?.refs?.some((r) => r.startsWith("stash@"));
 
-  const { showHash, showMessage } = useGitGraphStore();
+  const { showHash, showMessage, showCoordinates } = useGitGraphStore();
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   const copyToClipboard = async (text: string, type: "message" | "hash") => {
@@ -72,6 +74,13 @@ export function CommitNode({
           className="relative flex flex-col items-center group cursor-pointer outline-none"
           onClick={() => setPopoverOpen(true)}
         >
+          {/* Coordinates Debug */}
+          {showCoordinates && (
+            <div className="absolute -top-10 left-1/2 -translate-x-1/2 text-[8px] text-muted-foreground font-mono whitespace-nowrap bg-background/90 px-1 py-0.5 rounded border pointer-events-none z-50">
+              {Math.round(positionAbsoluteX)}, {Math.round(positionAbsoluteY)}
+            </div>
+          )}
+
           {/* Target Handle (Top side for TB layout) */}
           <Handle
             type="target"

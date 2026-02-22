@@ -69,7 +69,7 @@ export const getLayoutedElements = (commits: GitCommit[]) => {
 				type: "default", // Bezier curve is default in React Flow
 				animated: false,
 				style: {
-					stroke: "hsl(var(--muted-foreground))",
+					stroke: "var(--edge-stroke, #888)",
 					strokeWidth: 2,
 					strokeDasharray: isMergeParent ? "5 5" : "none",
 					cursor: "default",

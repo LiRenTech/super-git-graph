@@ -27,6 +27,7 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { useGitGraphStore } from "@/store/gitGraphStore";
+import { CacheSettings } from "@/components/CacheSettings";
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -113,6 +114,8 @@ function App() {
               </Button>
 
               <div className="h-6 w-px bg-border mx-2 shrink-0" />
+
+              <CacheSettings />
 
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
