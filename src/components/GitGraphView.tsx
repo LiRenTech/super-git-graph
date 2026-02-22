@@ -125,11 +125,13 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         nodesDraggable={true}
         nodeTypes={nodeTypes}
         fitView
+        minZoom={0.01}
+        maxZoom={10}
         attributionPosition="bottom-right"
-        className="bg-slate-50 dark:bg-slate-900 transition-colors duration-200"
+        className="bg-zinc-50 dark:bg-zinc-950 transition-colors duration-200"
       >
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-        <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-100 dark:text-slate-100 [&>button]:dark:bg-slate-800 [&>button]:dark:border-slate-700 [&>button]:dark:fill-slate-100 [&>button:hover]:dark:bg-slate-700" />
+        <Controls className="dark:bg-zinc-800 dark:border-zinc-700 dark:fill-zinc-100 dark:text-zinc-100 [&>button]:dark:bg-zinc-800 [&>button]:dark:border-zinc-700 [&>button]:dark:fill-zinc-100 [&>button:hover]:dark:bg-zinc-700" />
       </ReactFlow>
     </div>
   );
