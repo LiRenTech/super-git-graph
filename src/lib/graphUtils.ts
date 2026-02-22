@@ -2,11 +2,12 @@ import dagre from "@dagrejs/dagre";
 import { Node, Edge, Position } from "@xyflow/react";
 
 export interface GitCommit {
-	id: string;
-	message: string;
-	author: string;
-	date: number;
-	parents: string[];
+  id: string;
+  message: string;
+  author: string;
+  date: number;
+  parents: string[];
+  refs: string[];
 }
 
 const nodeWidth = 60; // Just enough for the circle + padding

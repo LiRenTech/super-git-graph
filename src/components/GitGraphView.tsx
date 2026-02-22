@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { 
   ReactFlow, 
   Background, 
@@ -12,7 +12,8 @@ import {
   BackgroundVariant,
   NodeTypes,
   ReactFlowProvider,
-  useReactFlow
+  useReactFlow,
+  Viewport
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { RefreshCw, GitBranch, Sun, Moon } from "lucide-react";
@@ -35,6 +36,7 @@ interface GitGraphViewProps {
 
 export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   const { fitView } = useReactFlow();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -91,8 +93,18 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
     );
   }, [searchQuery, setNodes]);
 
+  const onMove = useCallback((viewport: Viewport) => {
+    if (containerRef.current) {
+      // Threshold where we start clamping the scale to keep labels readable
+      // Higher value = larger labels when zoomed out
+      const minScale = 1.0;
+      const scale = viewport.zoom < minScale ? minScale / viewport.zoom : 1;
+      containerRef.current.style.setProperty('--label-scale', scale.toString());
+    }
+  }, []);
+
   return (
-    <div className="flex flex-col h-full w-full relative">
+    <div className="flex flex-col h-full w-full relative" ref={containerRef}>
       {/* Toolbar overlay */}
       <div className="absolute top-4 right-4 z-10 flex gap-2">
         <div className="w-64">
@@ -128,6 +140,7 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         minZoom={0.01}
         maxZoom={10}
         attributionPosition="bottom-right"
+        onMove={(_, viewport) => onMove(viewport)}
         className="bg-zinc-50 dark:bg-zinc-950 transition-colors duration-200"
       >
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
