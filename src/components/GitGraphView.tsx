@@ -87,6 +87,12 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
         const limit = 50;
         
+        // Capture the oldest commit ID before updating loadedCommits
+        // Since loadedCommits is ordered [Newest ... Oldest], the oldest is the last one.
+        const previousOldestCommitId = isLoadMore && loadedCommits.current.length > 0 
+          ? loadedCommits.current[loadedCommits.current.length - 1].id 
+          : null;
+        
         const response = await invoke<CommitResponse>("get_commits", {
           repoPath: path,
           limit,
@@ -106,7 +112,51 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         // Reverse commits to show oldest first (Top -> Bottom)
         // We use a copy for layout calculation
         const layoutData = getLayoutedElements([...loadedCommits.current].reverse());
-        setNodes(layoutData.nodes);
+        
+        if (isLoadMore && previousOldestCommitId) {
+            // Preserve existing node positions
+            setNodes((currentNodes) => {
+                const currentNodesMap = new Map(currentNodes.map(n => [n.id, n]));
+                
+                // Find the anchor node in both current and new layout
+                const anchorNodeCurrent = currentNodesMap.get(previousOldestCommitId);
+                const anchorNodeNew = layoutData.nodes.find(n => n.id === previousOldestCommitId);
+                
+                let deltaX = 0;
+                let deltaY = 0;
+                
+                if (anchorNodeCurrent && anchorNodeNew) {
+                    deltaX = anchorNodeCurrent.position.x - anchorNodeNew.position.x;
+                    deltaY = anchorNodeCurrent.position.y - anchorNodeNew.position.y;
+                }
+                
+                return layoutData.nodes.map(newNode => {
+                    const existingNode = currentNodesMap.get(newNode.id);
+                    if (existingNode) {
+                        // Keep existing position for existing nodes
+                        // But merge new data/style/etc from newNode if needed (e.g. parents might update?)
+                        // Actually, for commits, data usually doesn't change, but connections might.
+                        // We use newNode to keep the latest data structure but override position.
+                        return {
+                            ...newNode,
+                            position: existingNode.position
+                        };
+                    } else {
+                        // Apply offset to new nodes
+                        return {
+                            ...newNode,
+                            position: {
+                                x: newNode.position.x + deltaX,
+                                y: newNode.position.y + deltaY
+                            }
+                        };
+                    }
+                });
+            });
+        } else {
+            setNodes(layoutData.nodes);
+        }
+
         setEdges(layoutData.edges);
 
         // Fit view after a short delay to allow rendering, only on initial load/refresh
