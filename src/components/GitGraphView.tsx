@@ -124,6 +124,8 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
         // Load cached layout
         const cachedLayout = await layoutService.getLayout(path);
 
+        let finalNodes = layoutData.nodes;
+
         if (cachedLayout) {
           console.log("Applying cached layout to nodes");
         }
@@ -133,20 +135,37 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
           setNodes((currentNodes) => {
             const currentNodesMap = new Map(currentNodes.map((n) => [n.id, n]));
 
-            // Find the anchor node in both current and new layout
+            // Anchor from Current View (Real-time position)
             const anchorNodeCurrent = currentNodesMap.get(
               previousOldestCommitId,
             );
-            const anchorNodeNew = layoutData.nodes.find(
+
+            // Anchor from Cache (Saved position)
+            const anchorNodeCachePos = cachedLayout
+              ? cachedLayout[previousOldestCommitId]
+              : null;
+
+            // Anchor from New Dagre Layout (Default position for uncached nodes)
+            const anchorNodeNewDagre = layoutData.nodes.find(
               (n) => n.id === previousOldestCommitId,
             );
 
-            let deltaX = 0;
-            let deltaY = 0;
+            let dagreDeltaX = 0;
+            let dagreDeltaY = 0;
 
-            if (anchorNodeCurrent && anchorNodeNew) {
-              deltaX = anchorNodeCurrent.position.x - anchorNodeNew.position.x;
-              deltaY = anchorNodeCurrent.position.y - anchorNodeNew.position.y;
+            let cacheDeltaX = 0;
+            let cacheDeltaY = 0;
+
+            if (anchorNodeCurrent && anchorNodeNewDagre) {
+              dagreDeltaX =
+                anchorNodeCurrent.position.x - anchorNodeNewDagre.position.x;
+              dagreDeltaY =
+                anchorNodeCurrent.position.y - anchorNodeNewDagre.position.y;
+            }
+
+            if (anchorNodeCurrent && anchorNodeCachePos) {
+              cacheDeltaX = anchorNodeCurrent.position.x - anchorNodeCachePos.x;
+              cacheDeltaY = anchorNodeCurrent.position.y - anchorNodeCachePos.y;
             }
 
             return layoutData.nodes.map((newNode) => {
@@ -156,69 +175,37 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
                 return { ...newNode, position: existingNode.position };
               }
 
-              // 2. If cached in store, use cached pos (for restored session)
-              // Note: If we are "loading more", usually these are OLDER nodes which might be cached?
-              // But if we are extending graph, we apply delta.
-              // If the user already laid out the older nodes in previous session, we should respect that.
-              // But we also need to align them with the newer nodes (which might have moved).
-              // This is complex.
-              // Let's prioritize:
-              // - Existing in current session > Cached > New with Delta.
-
-              if (cachedLayout && cachedLayout[newNode.id]) {
-                // If we use absolute cached pos, it might disconnect from the currently shifted graph.
-                // Unless we shift the cached pos too?
-                // If the whole graph was shifted, cached pos is "absolute".
-                // Maybe we should just trust the cache if it exists?
-                // But if the user moved the "Newer" nodes (which are anchors for Older),
-                // and we load Older cached nodes, they might be far away.
-                // So we should probably apply delta to everything that is NOT in current view?
-                // Let's stick to the Delta logic for continuity for now.
-                // If we want persistence, we should have loaded cache at INITIAL load.
+              // 2. If node is in cache (and we have a valid cache anchor to align it), use cached pos aligned to current view
+              if (
+                cachedLayout &&
+                cachedLayout[newNode.id] &&
+                anchorNodeCachePos
+              ) {
+                return {
+                  ...newNode,
+                  position: {
+                    x: cachedLayout[newNode.id].x + cacheDeltaX,
+                    y: cachedLayout[newNode.id].y + cacheDeltaY,
+                  },
+                };
               }
 
-              // Apply offset to new nodes (relative to the anchor of this load)
+              // 3. Fallback: Use Dagre layout with delta offset (for completely new/uncached nodes)
               return {
                 ...newNode,
                 position: {
-                  x: newNode.position.x + deltaX,
-                  y: newNode.position.y + deltaY,
+                  x: newNode.position.x + dagreDeltaX,
+                  y: newNode.position.y + dagreDeltaY,
                 },
               };
             });
           });
+          // For load more, we don't need to update edges explicitly here as they are updated below
+          // But we need to make sure finalNodes is not used for setNodes in this branch
         } else {
           // Initial Load or Refresh
           // Apply cached positions if available
           if (cachedLayout) {
-            const mergedNodes = layoutData.nodes.map((node) => {
-              if (cachedLayout[node.id]) {
-                return {
-                  ...node,
-                  position: cachedLayout[node.id],
-                };
-              }
-              // For new nodes (not in cache, e.g. new commits since last save),
-              // we need to place them relative to cached nodes.
-              // Find a parent that is cached.
-              // Since we iterate Top->Bottom (Old->New), parents of New nodes are Old nodes.
-              // Old nodes should be cached.
-              // So we can find a parent P.
-              // delta = P.cached - P.dagre.
-              // node.pos = node.dagre + delta.
-
-              // But wait, "allCommits" is reversed => Oldest first.
-              // So "parents" (which are older) come BEFORE children?
-              // In git, parent is older.
-              // In our list: [Oldest, ..., Newest].
-              // So when we process Newest (at end), its parents (Older) are already processed.
-
-              // Let's do a pass to resolve positions.
-              return node;
-            });
-
-            // We need a second pass or a map to resolve dependencies.
-            // Or just modify the array in place or use a loop.
             const resolvedNodes = [];
             const finalPositions = new Map<string, { x: number; y: number }>();
 
@@ -267,19 +254,24 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
                 resolvedNodes.push({ ...node, position: newPos });
               }
             }
+            finalNodes = resolvedNodes;
             setNodes(resolvedNodes);
           } else {
             setNodes(layoutData.nodes);
           }
         }
 
-        console.log("Updating edges:", layoutData.edges.length);
-        setEdges([...layoutData.edges]);
+        // Delay setting edges to ensure nodes are registered in React Flow
+        // This fixes the issue where edges sometimes don't render on initial load
+        setTimeout(() => {
+          console.log("Updating edges:", layoutData.edges.length);
+          setEdges([...layoutData.edges]);
 
-        // Fit view after a short delay to allow rendering, only on initial load/refresh
-        if (!isLoadMore) {
-          setTimeout(() => fitView({ padding: 0.2 }), 100);
-        }
+          // Fit view after edges are set
+          if (!isLoadMore) {
+            setTimeout(() => fitView({ padding: 0.2 }), 50);
+          }
+        }, 10);
       } catch (error) {
         console.error("Failed to fetch commits:", error);
       } finally {
