@@ -121,50 +121,9 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
   const onNodeDrag: OnNodeDrag = useCallback(
     (_, node, nodes) => {
-      if (!isCtrlPressed.current) return;
-
-      // Find all descendants
-      const descendants = new Set<string>();
-      const queue = [node.id];
-
-      while (queue.length > 0) {
-        const currentId = queue.shift()!;
-        // Find edges where source is currentId (meaning currentId is parent)
-        // Remember: in our graph model, Edge direction is Parent -> Child
-        const childEdges = edges.filter((e) => e.source === currentId);
-
-        childEdges.forEach((edge) => {
-          if (!descendants.has(edge.target)) {
-            descendants.add(edge.target);
-            queue.push(edge.target);
-          }
-        });
-      }
-
-      if (descendants.size === 0) return;
-
-      // Calculate delta movement
-      // We need to find the previous position of the dragged node to calculate delta
-      // But React Flow updates the node position optimistically.
-      // A better way: find the initial position? No.
-      // Actually, onNodeDrag provides the *new* position.
-      // But we don't easily know the *delta* from this callback alone without tracking previous state.
-      // However, dragging updates the node in the `nodes` array.
-
-      // Alternative approach:
-      // When dragging node A, we want B and C to move by the same amount.
-      // But onNodeDrag is fired repeatedly.
-      // Let's use `onNodeDragStart` to capture initial positions if needed?
-      // Or simply: update descendants to maintain relative position?
-
-      // Let's try a simpler approach:
-      // We can't easily get delta here.
-      // But we can use `onNodesChange`? No, that's internal.
-
-      // Wait, onNodeDrag gives us the node *being dragged* with its new position.
-      // We need to update *other* nodes (descendants).
+      // This is now handled by onNodeDragHandler
     },
-    [edges],
+    [],
   );
 
   // To implement this correctly with delta, we need to track the last position

@@ -59,7 +59,9 @@ export const getLayoutedElements = (commits: GitCommit[]) => {
 
 	const edges: Edge[] = [];
 	commits.forEach((commit) => {
-		commit.parents.forEach((parentId) => {
+		commit.parents.forEach((parentId, index) => {
+			const isMergeParent = index > 0;
+
 			edges.push({
 				id: `e${parentId}-${commit.id}`,
 				source: parentId,
@@ -69,6 +71,7 @@ export const getLayoutedElements = (commits: GitCommit[]) => {
 				style: {
 					stroke: "hsl(var(--muted-foreground))",
 					strokeWidth: 2,
+					strokeDasharray: isMergeParent ? "5 5" : "none",
 				},
 			});
 		});
