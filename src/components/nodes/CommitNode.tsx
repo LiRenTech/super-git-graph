@@ -46,9 +46,10 @@ export function CommitNode(props: NodeProps) {
   const isUncommitted = typedData.commit?.id === "working-copy";
   const isStash = typedData.commit?.refs?.some((r: string) => r.startsWith("stash@"));
 
-  const { showHash, showMessage, showCoordinates, startDiffMode, diffMode, checkoutCommit } = useGitGraphStore();
+  const { showHash, showMessage, showCoordinates, startDiffMode, diffMode, checkoutCommit, checkoutBranch } = useGitGraphStore();
   const isDiffSource = diffMode.active && diffMode.sourceCommitId === id;
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [branchMenuOpen, setBranchMenuOpen] = useState<string | null>(null);
 
   const copyToClipboard = async (text: string, type: "message" | "hash") => {
     try {
@@ -76,16 +77,32 @@ export function CommitNode(props: NodeProps) {
     }
   };
 
-  // Function to handle branch click
-  const handleBranchClick = async (branchName: string) => {
+  const handleBranchCheckout = async (branchName: string) => {
     try {
-      // TODO: Implement branch checkout functionality
-      // This will require a new Tauri command to execute `git checkout <branch>`
-      toast.info(`Switching to branch: ${branchName}`);
-      // For now, just show a toast message
+      setBranchMenuOpen(null);
+      await checkoutBranch(typedData.repoPath, branchName);
+      toast.success(`Successfully switched to branch: ${branchName}`);
     } catch (error) {
       console.error("Failed to switch branch:", error);
-      toast.error("Failed to switch branch");
+      // Show more detailed error message
+      if (typeof error === 'string') {
+        toast.error(`Failed to switch branch: ${error}`);
+      } else if (error instanceof Error) {
+        toast.error(`Failed to switch branch: ${error.message}`);
+      } else {
+        toast.error("Failed to switch branch - unknown error");
+      }
+    }
+  };
+
+  const handleBranchCopy = async (branchName: string) => {
+    try {
+      setBranchMenuOpen(null);
+      await writeText(branchName);
+      toast.success(`Copied branch name to clipboard`);
+    } catch (err) {
+      console.error("Failed to copy branch name:", err);
+      toast.error("Failed to copy to clipboard");
     }
   };
 
@@ -127,47 +144,79 @@ export function CommitNode(props: NodeProps) {
           >
             {branchRefs.map((branch: string) => {
               const hue = getBranchHue(branch);
-              const isCurrentBranch = isBranchHead && branchRefs.length === 1 && branchRefs[0] === branch;
+              // Fix: HEAD should be shown for the current branch regardless of how many branches point to this commit
+              const isCurrentBranch = isBranchHead && branchRefs.includes(branch);
               
               return (
-                <div
-                  key={branch}
-                  className={cn(
-                    "relative flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium shadow-sm whitespace-nowrap border cursor-pointer hover:opacity-80 transition-all duration-150",
-                    // Light theme colors
-                    "bg-[hsl(var(--branch-hue),85%,96%)] text-[hsl(var(--branch-hue),80%,30%)] border-[hsl(var(--branch-hue),60%,85%)]",
-                    // Dark theme colors  
-                    "dark:bg-[hsl(var(--branch-hue),60%,20%)] dark:text-[hsl(var(--branch-hue),80%,90%)] dark:border-[hsl(var(--branch-hue),60%,30%)]",
-                    // Current branch highlight (light theme)
-                    isCurrentBranch && "ring-2 ring-blue-300 dark:ring-blue-700"
-                  )}
-                  style={{ "--branch-hue": hue } as React.CSSProperties}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleBranchClick(branch);
-                  }}
+                <Popover 
+                  key={branch} 
+                  open={branchMenuOpen === branch}
+                  onOpenChange={(open) => setBranchMenuOpen(open ? branch : null)}
                 >
-                  <GitBranch className="w-3 h-3" />
-                  {branch}
-                  <div
-                    className={cn(
-                      "absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent",
-                      // Light theme triangle
-                      "border-t-[hsl(var(--branch-hue),60%,85%)]",
-                      // Dark theme triangle
-                      "dark:border-t-[hsl(var(--branch-hue),60%,30%)]"
-                    )}
-                  />
-                  
-                  {/* Branch HEAD Indicator - Only shown for the current branch */}
-                  {isCurrentBranch && (
-                    <div className="absolute -left-full top-1/2 -translate-y-1/2 -ml-3 flex items-center gap-1 px-2 py-0.5 border border-blue-500 dark:border-blue-600 rounded text-[10px] font-medium shadow-sm whitespace-nowrap bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span>HEAD</span>
-                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-blue-500 dark:border-r-blue-600" />
+                  <PopoverTrigger asChild>
+                    <div
+                      className={cn(
+                        "relative flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium shadow-sm whitespace-nowrap border cursor-pointer hover:opacity-80 transition-all duration-150",
+                        // Light theme colors
+                        "bg-[hsl(var(--branch-hue),85%,96%)] text-[hsl(var(--branch-hue),80%,30%)] border-[hsl(var(--branch-hue),60%,85%)]",
+                        // Dark theme colors  
+                        "dark:bg-[hsl(var(--branch-hue),60%,20%)] dark:text-[hsl(var(--branch-hue),80%,90%)] dark:border-[hsl(var(--branch-hue),60%,30%)]",
+                        // Current branch highlight (light theme)
+                        isCurrentBranch && "ring-2 ring-blue-300 dark:ring-blue-700"
+                      )}
+                      style={{ "--branch-hue": hue } as React.CSSProperties}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                    >
+                      <GitBranch className="w-3 h-3" />
+                      {branch}
+                      <div
+                        className={cn(
+                          "absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent",
+                          // Light theme triangle
+                          "border-t-[hsl(var(--branch-hue),60%,85%)]",
+                          // Dark theme triangle
+                          "dark:border-t-[hsl(var(--branch-hue),60%,30%)]"
+                        )}
+                      />
+                      
+                      {/* Branch HEAD Indicator - Only shown for the current branch */}
+                      {isCurrentBranch && (
+                        <div className="absolute -left-full top-1/2 -translate-y-1/2 -ml-3 flex items-center gap-1 px-2 py-0.5 border border-blue-500 dark:border-blue-600 rounded text-[10px] font-medium shadow-sm whitespace-nowrap bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span>HEAD</span>
+                          <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-blue-500 dark:border-r-blue-600" />
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-48 p-2 flex flex-col gap-1"
+                    side="bottom"
+                    align="center"
+                    sideOffset={5}
+                  >
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start gap-2 h-8"
+                      onClick={() => handleBranchCheckout(branch)}
+                    >
+                      <ArrowLeftRight className="w-4 h-4" />
+                      <span className="text-xs">Checkout branch</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start gap-2 h-8"
+                      onClick={() => handleBranchCopy(branch)}
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span className="text-xs">Copy branch name</span>
+                    </Button>
+                  </PopoverContent>
+                </Popover>
               );
             })}
 

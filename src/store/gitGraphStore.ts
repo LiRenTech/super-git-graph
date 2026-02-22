@@ -39,6 +39,7 @@ interface GitGraphState {
   endDiffMode: () => void;
   setDiffTarget: (targetCommitId: string) => void;
   checkoutCommit: (repoPath: string, commitId: string) => Promise<void>;
+  checkoutBranch: (repoPath: string, branchName: string) => Promise<void>;
   // Add method to set refresh callback
   setRefreshCallback: (callback: (repoPath: string) => void) => void;
   // Add method to trigger refresh
@@ -115,6 +116,28 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       
     } catch (error) {
       console.error('Failed to checkout commit:', error);
+      throw error;
+    }
+  },
+  checkoutBranch: async (repoPath: string, branchName: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    try {
+      // Import invoke here to avoid circular dependencies
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('checkout_branch', {
+        repoPath,
+        branchName,
+      });
+      
+      // Trigger refresh after successful checkout
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to checkout branch:', error);
       throw error;
     }
   },

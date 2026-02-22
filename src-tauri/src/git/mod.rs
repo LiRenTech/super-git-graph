@@ -482,3 +482,95 @@ pub fn checkout_commit(repo_path: String, commit_id: String) -> Result<(), Strin
         }
     }
 }
+
+#[tauri::command]
+pub fn checkout_branch(repo_path: String, branch_name: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    
+    // Determine the correct reference name and HEAD target
+    let (ref_name, head_target) = {
+        // First try local branch (refs/heads/...)
+        if let Ok(branch_ref) = repo.find_reference(&format!("refs/heads/{}", branch_name)) {
+            (format!("refs/heads/{}", branch_name), format!("refs/heads/{}", branch_name))
+        } 
+        // Then try remote branch (refs/remotes/...)
+        else if let Ok(remote_ref) = repo.find_reference(&format!("refs/remotes/{}", branch_name)) {
+            // For remote branches, we need to create a local tracking branch or checkout in detached HEAD
+            // For simplicity, let's checkout the remote branch directly (detached HEAD)
+            // But first check if there's already a local branch with the same name (without remote prefix)
+            let local_branch_name = branch_name.split('/').last().unwrap_or(&branch_name);
+            if let Ok(_) = repo.find_reference(&format!("refs/heads/{}", local_branch_name)) {
+                // Local branch exists, use it
+                (format!("refs/heads/{}", local_branch_name), format!("refs/heads/{}", local_branch_name))
+            } else {
+                // No local branch, checkout the remote commit directly (detached HEAD)
+                let target_oid = remote_ref.target().ok_or_else(|| "Remote branch has no target".to_string())?;
+                return checkout_commit_by_oid(&repo, target_oid, &repo_path);
+            }
+        }
+        // Try full reference name
+        else if let Ok(full_ref) = repo.find_reference(&branch_name) {
+            if branch_name.starts_with("refs/heads/") {
+                (branch_name.clone(), branch_name.clone())
+            } else {
+                // Non-local reference, checkout commit directly
+                let target_oid = full_ref.target().ok_or_else(|| "Reference has no target".to_string())?;
+                return checkout_commit_by_oid(&repo, target_oid, &repo_path);
+            }
+        }
+        // Branch not found
+        else {
+            return Err(format!("Branch '{}' not found", branch_name));
+        }
+    };
+    
+    // Get the target commit OID
+    let branch_ref = repo.find_reference(&ref_name).map_err(|e| e.to_string())?;
+    let target_oid = branch_ref.target().ok_or_else(|| "Branch has no target commit".to_string())?;
+    
+    // Find the commit object to verify it exists
+    let _commit = repo.find_commit(target_oid).map_err(|e| e.to_string())?;
+    
+    // Create an object from the commit
+    let obj = repo.find_object(target_oid, None).map_err(|e| e.to_string())?;
+    
+    // Checkout the branch
+    let mut checkout_builder = git2::build::CheckoutBuilder::new();
+    
+    match repo.checkout_tree(&obj, Some(&mut checkout_builder)) {
+        Ok(()) => {
+            // Update HEAD to point to the branch
+            repo.set_head(&head_target).map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Err(e) => {
+            // Provide more helpful error message
+            if e.message().contains("conflict") || e.message().contains("dirty") {
+                Err("Cannot checkout: You have uncommitted changes that would be overwritten. Please commit or stash your changes first.".to_string())
+            } else {
+                Err(format!("Failed to checkout branch '{}': {}", branch_name, e))
+            }
+        }
+    }
+}
+
+// Helper function to checkout a commit by OID (detached HEAD)
+fn checkout_commit_by_oid(repo: &Repository, oid: Oid, repo_path: &str) -> Result<(), String> {
+    let obj = repo.find_object(oid, None).map_err(|e| e.to_string())?;
+    let mut checkout_builder = git2::build::CheckoutBuilder::new();
+    
+    match repo.checkout_tree(&obj, Some(&mut checkout_builder)) {
+        Ok(()) => {
+            // Update HEAD to point to this commit (detached HEAD state)
+            repo.set_head_detached(oid).map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Err(e) => {
+            if e.message().contains("conflict") || e.message().contains("dirty") {
+                Err("Cannot checkout: You have uncommitted changes that would be overwritten. Please commit or stash your changes first.".to_string())
+            } else {
+                Err(format!("Failed to checkout commit: {}", e))
+            }
+        }
+    }
+}

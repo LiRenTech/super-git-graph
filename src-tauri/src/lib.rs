@@ -47,6 +47,7 @@ pub fn run() {
             git::get_all_refs,
             git::get_diff,
             git::checkout_commit,
+            git::checkout_branch,
             reveal_store_file
         ])
         .run(tauri::generate_context!())
