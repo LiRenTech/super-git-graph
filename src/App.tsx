@@ -12,6 +12,8 @@ import {
   MessageSquareText,
   Eye,
   EyeOff,
+  Move,
+  Network,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -34,8 +36,14 @@ function App() {
   const [openRepos, setOpenRepos] = useState<string[]>([]);
   const [activeRepo, setActiveRepo] = useState<string | null>(null);
 
-  const { showHash, showMessage, setShowHash, setShowMessage } =
-    useGitGraphStore();
+  const {
+    showHash,
+    showMessage,
+    setShowHash,
+    setShowMessage,
+    isDragSubtreeMode,
+    setIsDragSubtreeMode,
+  } = useGitGraphStore();
 
   // Initialize dark mode
   useEffect(() => {
@@ -116,6 +124,30 @@ function App() {
               <div className="h-6 w-px bg-border mx-2 shrink-0" />
 
               <CacheSettings />
+
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsDragSubtreeMode(!isDragSubtreeMode)}
+                    className={cn(isDragSubtreeMode && "bg-muted text-primary")}
+                  >
+                    {isDragSubtreeMode ? (
+                      <Network className="w-4 h-4" />
+                    ) : (
+                      <Move className="w-4 h-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>
+                    {isDragSubtreeMode
+                      ? "Current: Subtree Drag Mode (Hold Ctrl for Single Node)"
+                      : "Current: Single Node Drag Mode (Hold Ctrl for Subtree)"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
 
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>

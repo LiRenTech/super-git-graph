@@ -45,6 +45,7 @@ interface CommitResponse {
 export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
   const { fitView, getNodes } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
+  const { isDragSubtreeMode } = useGitGraphStore();
   // const { showCoordinates, setShowCoordinates } = useGitGraphStore();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -330,7 +331,19 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
   const onNodeDragHandler: OnNodeDrag = useCallback(
     (_, node) => {
-      if (!isCtrlPressed.current || !lastNodePos.current) {
+      // Logic for Drag Mode:
+      // isDragSubtreeMode = true (Default Subtree):
+      //    - Drag: Move Subtree
+      //    - Ctrl + Drag: Move Single Node
+      // isDragSubtreeMode = false (Default Single):
+      //    - Drag: Move Single Node
+      //    - Ctrl + Drag: Move Subtree
+
+      const isSubtreeDrag = isDragSubtreeMode
+        ? !isCtrlPressed.current // Mode=Subtree: No Ctrl -> Subtree
+        : isCtrlPressed.current; // Mode=Single: Ctrl -> Subtree
+
+      if (!isSubtreeDrag || !lastNodePos.current) {
         lastNodePos.current = { ...node.position };
         return;
       }
@@ -375,7 +388,7 @@ export function GitGraphView({ repoPath, isActive }: GitGraphViewProps) {
 
       lastNodePos.current = { ...node.position };
     },
-    [edges, setNodes],
+    [edges, setNodes, isDragSubtreeMode],
   );
 
   const onNodeDragStop: OnNodeDrag = useCallback(
