@@ -7,9 +7,10 @@ import {
   Copy,
   ArrowLeftRight,
   GitCompare,
-  GitPullRequest,
   Upload,
   Loader2,
+  Download,
+  CornerUpRight,
 } from "lucide-react";
 import { useGitGraphStore } from "@/store/gitGraphStore";
 import {
@@ -233,8 +234,13 @@ export function CommitNode(props: NodeProps) {
             {branchRefs.map((branch: string) => {
               const hue = getBranchHue(branch);
               // Fix: HEAD should be shown for the current branch regardless of how many branches point to this commit
-              const isCurrentBranch =
-                isBranchHead && branchRefs.includes(branch);
+              // Determine if this branch is a remote branch (contains slash and starts with common remote names)
+              const isRemoteBranch =
+                branch.includes("/") &&
+                (branch.startsWith("origin/") ||
+                  branch.startsWith("upstream/") ||
+                  branch.startsWith("fork/"));
+              const isCurrentBranch = isBranchHead && !isRemoteBranch;
 
               return (
                 <Popover
@@ -303,7 +309,7 @@ export function CommitNode(props: NodeProps) {
                       loadingOperation?.startsWith(`checking out ${branch}`) ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <ArrowLeftRight className="w-4 h-4" />
+                        <CornerUpRight className="w-4 h-4" />
                       )}
                       <span className="text-xs">Checkout branch</span>
                     </Button>
@@ -321,7 +327,7 @@ export function CommitNode(props: NodeProps) {
                       loadingOperation?.startsWith(`pulling ${branch}`) ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <GitPullRequest className="w-4 h-4" />
+                        <Download className="w-4 h-4" />
                       )}
                       <span className="text-xs">Pull branch</span>
                     </Button>
