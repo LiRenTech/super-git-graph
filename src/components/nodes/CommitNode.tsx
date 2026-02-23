@@ -16,37 +16,57 @@ import { toast } from "sonner";
 // Remove the interface and use inline typing
 export function CommitNode(props: NodeProps) {
   const { data, selected, positionAbsoluteX, positionAbsoluteY, id } = props;
-  
+
   // Use unknown first, then cast to the expected type
   const typedData = data as unknown as {
     label: string;
     commit: GitCommit & { head_type?: string };
     repoPath: string;
   };
-  
+
   // Debug logging
-  console.log("Commit data:", typedData.commit.id, "HEAD refs:", typedData.commit.refs, "head_type:", typedData.commit.head_type);
-  
+  console.log(
+    "Commit data:",
+    typedData.commit.id,
+    "HEAD refs:",
+    typedData.commit.refs,
+    "head_type:",
+    typedData.commit.head_type,
+  );
+
   // Determine HEAD type using backend-provided head_type field
   const hasHeadRef = typedData.commit?.refs?.includes("HEAD") || false;
   const headType = typedData.commit?.head_type; // "detached" or "branch" or undefined
-  
+
   const isDetachedHead = hasHeadRef && headType === "detached";
   const isBranchHead = hasHeadRef && headType === "branch";
-  
-  const branchRefs = typedData.commit?.refs?.filter(
-    (r: string) => r !== "HEAD" && !r.startsWith("refs/tags/")
-  ) || [];
-  const tagRefs = typedData.commit?.refs?.filter(
-    (r: string) => r.startsWith("refs/tags/")
-  ) || [];
-  
-  const isMerge = typedData.commit?.parents && typedData.commit.parents.length > 1;
-  const isRoot = !typedData.commit?.parents || typedData.commit.parents.length === 0;
-  const isUncommitted = typedData.commit?.id === "working-copy";
-  const isStash = typedData.commit?.refs?.some((r: string) => r.startsWith("stash@"));
 
-  const { showHash, showMessage, showCoordinates, startDiffMode, diffMode, checkoutCommit, checkoutBranch } = useGitGraphStore();
+  const branchRefs =
+    typedData.commit?.refs?.filter(
+      (r: string) => r !== "HEAD" && !r.startsWith("refs/tags/"),
+    ) || [];
+  const tagRefs =
+    typedData.commit?.refs?.filter((r: string) => r.startsWith("refs/tags/")) ||
+    [];
+
+  const isMerge =
+    typedData.commit?.parents && typedData.commit.parents.length > 1;
+  const isRoot =
+    !typedData.commit?.parents || typedData.commit.parents.length === 0;
+  const isUncommitted = typedData.commit?.id === "working-copy";
+  const isStash = typedData.commit?.refs?.some((r: string) =>
+    r.startsWith("stash@"),
+  );
+
+  const {
+    showHash,
+    showMessage,
+    showCoordinates,
+    startDiffMode,
+    diffMode,
+    checkoutCommit,
+    checkoutBranch,
+  } = useGitGraphStore();
   const isDiffSource = diffMode.active && diffMode.sourceCommitId === id;
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [branchMenuOpen, setBranchMenuOpen] = useState<string | null>(null);
@@ -66,7 +86,7 @@ export function CommitNode(props: NodeProps) {
       toast.error("Cannot checkout uncommitted changes");
       return;
     }
-    
+
     try {
       setPopoverOpen(false);
       await checkoutCommit(typedData.repoPath, typedData.commit.id);
@@ -85,7 +105,7 @@ export function CommitNode(props: NodeProps) {
     } catch (error) {
       console.error("Failed to switch branch:", error);
       // Show more detailed error message
-      if (typeof error === 'string') {
+      if (typeof error === "string") {
         toast.error(`Failed to switch branch: ${error}`);
       } else if (error instanceof Error) {
         toast.error(`Failed to switch branch: ${error.message}`);
@@ -145,13 +165,16 @@ export function CommitNode(props: NodeProps) {
             {branchRefs.map((branch: string) => {
               const hue = getBranchHue(branch);
               // Fix: HEAD should be shown for the current branch regardless of how many branches point to this commit
-              const isCurrentBranch = isBranchHead && branchRefs.includes(branch);
-              
+              const isCurrentBranch =
+                isBranchHead && branchRefs.includes(branch);
+
               return (
-                <Popover 
-                  key={branch} 
+                <Popover
+                  key={branch}
                   open={branchMenuOpen === branch}
-                  onOpenChange={(open) => setBranchMenuOpen(open ? branch : null)}
+                  onOpenChange={(open) =>
+                    setBranchMenuOpen(open ? branch : null)
+                  }
                 >
                   <PopoverTrigger asChild>
                     <div
@@ -159,10 +182,11 @@ export function CommitNode(props: NodeProps) {
                         "relative flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium shadow-sm whitespace-nowrap border cursor-pointer hover:opacity-80 transition-all duration-150",
                         // Light theme colors
                         "bg-[hsl(var(--branch-hue),85%,96%)] text-[hsl(var(--branch-hue),80%,30%)] border-[hsl(var(--branch-hue),60%,85%)]",
-                        // Dark theme colors  
+                        // Dark theme colors
                         "dark:bg-[hsl(var(--branch-hue),60%,20%)] dark:text-[hsl(var(--branch-hue),80%,90%)] dark:border-[hsl(var(--branch-hue),60%,30%)]",
                         // Current branch highlight (light theme)
-                        isCurrentBranch && "ring-2 ring-blue-300 dark:ring-blue-700"
+                        isCurrentBranch &&
+                          "ring-2 ring-blue-300 dark:ring-blue-700",
                       )}
                       style={{ "--branch-hue": hue } as React.CSSProperties}
                       onClick={(e) => {
@@ -177,16 +201,16 @@ export function CommitNode(props: NodeProps) {
                           // Light theme triangle
                           "border-t-[hsl(var(--branch-hue),60%,85%)]",
                           // Dark theme triangle
-                          "dark:border-t-[hsl(var(--branch-hue),60%,30%)]"
+                          "dark:border-t-[hsl(var(--branch-hue),60%,30%)]",
                         )}
                       />
-                      
+
                       {/* Branch HEAD Indicator - Only shown for the current branch */}
                       {isCurrentBranch && (
                         <div className="absolute -left-full top-1/2 -translate-y-1/2 -ml-3 flex items-center gap-1 px-2 py-0.5 border border-blue-500 dark:border-blue-600 rounded text-[10px] font-medium shadow-sm whitespace-nowrap bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
                           <div className="w-2 h-2 rounded-full bg-blue-500" />
                           <span>HEAD</span>
-                          <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-blue-500 dark:border-r-blue-600" />
+                          <div className="absolute left-full top-1/2 -translate-y-1/2 border-4 border-transparent border-l-blue-500 dark:border-l-blue-600" />
                         </div>
                       )}
                     </div>
@@ -354,9 +378,9 @@ export function CommitNode(props: NodeProps) {
           <GitCompare className="w-4 h-4" />
           <span className="text-xs">Diff with another commit</span>
         </Button>
-        <Button 
-          variant="ghost" 
-          size="sm" 
+        <Button
+          variant="ghost"
+          size="sm"
           className="justify-start gap-2 h-8"
           onClick={handleCheckout}
           disabled={isUncommitted}
@@ -368,7 +392,9 @@ export function CommitNode(props: NodeProps) {
           variant="ghost"
           size="sm"
           className="justify-start gap-2 h-8"
-          onClick={() => copyToClipboard(typedData.commit?.message || "", "message")}
+          onClick={() =>
+            copyToClipboard(typedData.commit?.message || "", "message")
+          }
         >
           <Copy className="w-4 h-4" />
           <span className="text-xs truncate">Copy Message</span>
