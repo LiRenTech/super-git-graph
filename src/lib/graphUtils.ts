@@ -6,6 +6,10 @@ export interface GitCommit {
   message: string;
   author: string;
   date: number;
+  /**
+   * Parent commit IDs. For merge commits, the first parent (parents[0]) is the main line,
+   * and subsequent parents are merged branches.
+   */
   parents: string[];
   refs: string[];
 }
@@ -15,6 +19,19 @@ export interface LayoutedElements {
   edges: Edge[];
 }
 
+/**
+ * Creates nodes and edges for the Git graph visualization.
+ * 
+ * Edge styling rules:
+ * - Edge color is based on the target commit's author (hue derived from author string hash)
+ * - For merge commits (commits with multiple parents):
+ *   - First parent (parents[0]) -> solid line (main line)
+ *   - Second and subsequent parents -> dashed line (merged branches)
+ * 
+ * Example: If commit B is a merge of A (main) and C (branch):
+ *   - A->B: solid line
+ *   - C->B: dashed line
+ */
 export function getLayoutedElements(commits: GitCommit[]): LayoutedElements {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "TB", ranksep: 50, nodesep: 20 });
@@ -61,14 +78,23 @@ export function getLayoutedElements(commits: GitCommit[]): LayoutedElements {
   const edges: Edge[] = [];
   commits.forEach((commit) => {
     if (commit.parents) {
-      commit.parents.forEach((parentId) => {
+      commit.parents.forEach((parentId, index) => {
         if (commits.some((c) => c.id === parentId)) {
+          const targetHue = getAuthorHue(commit.author);
+          const style: { stroke: string; strokeDasharray?: string } = { 
+            stroke: `hsl(${targetHue}, 60%, 60%)`,
+          };
+          // For merge commits, only the second and subsequent parents (merged branches) get dashed lines
+          // First parent (main line) remains solid
+          if (commit.parents.length > 1 && index > 0) {
+            style.strokeDasharray = "5,5";
+          }
           edges.push({
             id: `${parentId}-${commit.id}`,
             source: parentId,
             target: commit.id,
             animated: false,
-            style: { stroke: "#94a3b8" },
+            style,
           });
         }
       });
@@ -86,6 +112,15 @@ export function getBranchHue(name: string) {
   let hash = 0;
   for (let i = 0; i < cleanName.length; i++) {
     hash = cleanName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash % 360);
+}
+
+export function getAuthorHue(author: string) {
+  // Use the entire author string for hashing
+  let hash = 0;
+  for (let i = 0; i < author.length; i++) {
+    hash = author.charCodeAt(i) + ((hash << 5) - hash);
   }
   return Math.abs(hash % 360);
 }

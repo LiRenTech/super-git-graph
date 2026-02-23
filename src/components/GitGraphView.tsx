@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getLayoutedElements, GitCommit } from "@/lib/graphUtils";
 import { layoutService } from "@/lib/layoutService";
+import { debounce } from "@/lib/utils";
 import { CommitNode } from "@/components/nodes/CommitNode";
 import { useGitGraphStore, GitRef } from "@/store/gitGraphStore";
 import { DiffDialog } from "@/components/DiffDialog";
@@ -39,7 +40,11 @@ interface CommitResponse {
   has_more: boolean;
 }
 
-export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewProps) {
+export function GitGraphView({
+  repoPath,
+  isActive,
+  isDarkMode,
+}: GitGraphViewProps) {
   const { fitView, getNodes, setCenter, getViewport } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
   const {
@@ -76,7 +81,9 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
         // Remove diff arrow
         setEdges((prevEdges) => prevEdges.filter((e) => e.id !== "diff-arrow"));
         // Remove virtual target node
-        setNodes((prevNodes) => prevNodes.filter((n) => n.id !== diffArrowNodeId));
+        setNodes((prevNodes) =>
+          prevNodes.filter((n) => n.id !== diffArrowNodeId),
+        );
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -100,7 +107,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
       // Also update visible branches based on current viewport when becoming active
       // This is needed because onMoveEnd might not fire if we just switch tabs without moving
       // We can trigger a recalculation or just let the user move to update
-      // But ideally we should preserve visible branches state too? 
+      // But ideally we should preserve visible branches state too?
       // For now, let's just ensure the data is correct.
     }
   }, [isActive, nodes, edges, localRefs, setGraphData, setAllRefs]);
@@ -113,7 +120,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
         });
         setLocalRefs(refs);
         if (isActive) {
-           setAllRefs(refs);
+          setAllRefs(refs);
         }
       } catch (e) {
         console.error("Failed to fetch refs", e);
@@ -172,12 +179,12 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
         const layoutData = getLayoutedElements(allCommits);
 
         // Add repoPath to node data
-        const nodesWithRepoPath = layoutData.nodes.map(node => ({
+        const nodesWithRepoPath = layoutData.nodes.map((node) => ({
           ...node,
           data: {
             ...node.data,
-            repoPath: path
-          }
+            repoPath: path,
+          },
         }));
 
         // Load cached layout
@@ -277,7 +284,10 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
                 resolvedNodes.push({ ...node, position: pos });
               } else {
                 // Not cached. Try to align with parents.
-                const nodeData = node.data as { commit: GitCommit; repoPath: string };
+                const nodeData = node.data as {
+                  commit: GitCommit;
+                  repoPath: string;
+                };
                 const parents = nodeData.commit.parents;
                 let delta = { x: 0, y: 0 };
 
@@ -457,6 +467,13 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
     [edges, setNodes, isDragSubtreeMode],
   );
 
+  const saveLayoutDebounced = useCallback(
+    debounce((layoutData: { [key: string]: { x: number; y: number } }) => {
+      layoutService.saveLayout(repoPath, layoutData);
+    }, 500),
+    [repoPath],
+  );
+
   const onNodeDragStop: OnNodeDrag = useCallback(
     (_, _node, _nodes) => {
       // Save all node positions to layout service
@@ -472,7 +489,7 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
         {} as { [key: string]: { x: number; y: number } },
       );
 
-      layoutService.saveLayout(repoPath, layoutData);
+      saveLayoutDebounced(layoutData);
     },
     [repoPath, getNodes],
   );
@@ -544,103 +561,124 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
   }, [focusNodeId, getNodes, setCenter, setFocusNodeId]);
 
   // Handle mouse movement in diff mode
-  const handleMouseMove = useCallback((event: React.MouseEvent) => {
-    if (!diffMode.active || !containerRef.current || !diffMode.sourceCommitId) return;
+  const handleMouseMove = useCallback(
+    (event: React.MouseEvent) => {
+      if (!diffMode.active || !containerRef.current || !diffMode.sourceCommitId)
+        return;
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
 
-    // Convert screen coordinates to graph coordinates
-    const viewport = getViewport();
-    const graphX = (x - viewport.x) / viewport.zoom;
-    const graphY = (y - viewport.y) / viewport.zoom;
+      // Convert screen coordinates to graph coordinates
+      const viewport = getViewport();
+      const graphX = (x - viewport.x) / viewport.zoom;
+      const graphY = (y - viewport.y) / viewport.zoom;
 
-    // Update the diff arrow edge
-    setEdges((prevEdges) => {
-      const filteredEdges = prevEdges.filter((e) => e.id !== "diff-arrow");
+      // Update the diff arrow edge
+      setEdges((prevEdges) => {
+        const filteredEdges = prevEdges.filter((e) => e.id !== "diff-arrow");
 
-      return [
-        ...filteredEdges,
-        {
-          id: "diff-arrow",
-          source: diffMode.sourceCommitId!,
-          target: diffArrowNodeId,
-          type: "default",
-          animated: false,
-          style: {
-            stroke: "#3b82f6",
-            strokeWidth: 2,
-          },
-          markerEnd: {
-            type: "arrowclosed",
-            color: "#3b82f6",
-            strokeWidth: 2,
-            orient: "auto",
-          },
-          focusable: false,
-          selectable: false,
-          zIndex: 1000,
-        } as Edge,
-      ];
-    });
-
-    // Update the virtual target node position
-    setNodes((prevNodes) => {
-      const hasVirtualNode = prevNodes.some((n) => n.id === diffArrowNodeId);
-      if (hasVirtualNode) {
-        return prevNodes.map((n) =>
-          n.id === diffArrowNodeId
-            ? { ...n, position: { x: graphX, y: graphY } }
-            : n
-        );
-      } else {
         return [
-          ...prevNodes,
+          ...filteredEdges,
           {
-            id: diffArrowNodeId,
-            position: { x: graphX, y: graphY },
-            data: {},
+            id: "diff-arrow",
+            source: diffMode.sourceCommitId!,
+            target: diffArrowNodeId,
+            type: "default",
+            animated: false,
             style: {
-              opacity: 0,
-              width: 0,
-              height: 0,
+              stroke: "#3b82f6",
+              strokeWidth: 2,
             },
-          } as Node,
+            markerEnd: {
+              type: "arrowclosed",
+              color: "#3b82f6",
+              strokeWidth: 2,
+              orient: "auto",
+            },
+            focusable: false,
+            selectable: false,
+            zIndex: 1000,
+          } as Edge,
         ];
-      }
-    });
-  }, [diffMode.active, diffMode.sourceCommitId, setEdges, setNodes, getViewport, diffArrowNodeId]);
+      });
+
+      // Update the virtual target node position
+      setNodes((prevNodes) => {
+        const hasVirtualNode = prevNodes.some((n) => n.id === diffArrowNodeId);
+        if (hasVirtualNode) {
+          return prevNodes.map((n) =>
+            n.id === diffArrowNodeId
+              ? { ...n, position: { x: graphX, y: graphY } }
+              : n,
+          );
+        } else {
+          return [
+            ...prevNodes,
+            {
+              id: diffArrowNodeId,
+              position: { x: graphX, y: graphY },
+              data: {},
+              style: {
+                opacity: 0,
+                width: 0,
+                height: 0,
+              },
+            } as Node,
+          ];
+        }
+      });
+    },
+    [
+      diffMode.active,
+      diffMode.sourceCommitId,
+      setEdges,
+      setNodes,
+      getViewport,
+      diffArrowNodeId,
+    ],
+  );
 
   // Handle node click in diff mode
-  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    if (!diffMode.active || diffMode.sourceCommitId === null) return;
+  const handleNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      if (!diffMode.active || diffMode.sourceCommitId === null) return;
 
-    // Skip if trying to diff with "working-copy"
-    if (node.id === "working-copy") {
-      return;
-    }
+      // Skip if trying to diff with "working-copy"
+      if (node.id === "working-copy") {
+        return;
+      }
 
-    event.stopPropagation();
+      event.stopPropagation();
 
-    console.log("Node clicked in diff mode:", node.id);
-    setDiffTarget(node.id);
-    setShowDiffDialog(true);
+      console.log("Node clicked in diff mode:", node.id);
+      setDiffTarget(node.id);
+      setShowDiffDialog(true);
 
-    // Remove diff arrow immediately
-    console.log("Removing diff arrow");
-    setEdges((prevEdges) => {
-      const filtered = prevEdges.filter((e) => e.id !== "diff-arrow");
-      console.log("Edges after removal:", filtered.length);
-      return filtered;
-    });
-    // Remove virtual target node immediately
-    setNodes((prevNodes) => {
-      const filtered = prevNodes.filter((n) => n.id !== diffArrowNodeId);
-      console.log("Nodes after removal:", filtered.length);
-      return filtered;
-    });
-  }, [diffMode.active, diffMode.sourceCommitId, setDiffTarget, setEdges, setNodes, diffArrowNodeId]);
+      // Remove diff arrow immediately
+      console.log("Removing diff arrow");
+      setEdges((prevEdges) => {
+        const filtered = prevEdges.filter((e) => e.id !== "diff-arrow");
+        console.log("Edges after removal:", filtered.length);
+        return filtered;
+      });
+      // Remove virtual target node immediately
+      setNodes((prevNodes) => {
+        const filtered = prevNodes.filter((n) => n.id !== diffArrowNodeId);
+        console.log("Nodes after removal:", filtered.length);
+        return filtered;
+      });
+    },
+    [
+      diffMode.active,
+      diffMode.sourceCommitId,
+      setDiffTarget,
+      setEdges,
+      setNodes,
+      diffArrowNodeId,
+    ],
+  );
 
   // Handle canvas click to exit diff mode
   const handleCanvasClick = useCallback(() => {
@@ -650,12 +688,23 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
       // Remove diff arrow
       setEdges((prevEdges) => prevEdges.filter((e) => e.id !== "diff-arrow"));
       // Remove virtual target node
-      setNodes((prevNodes) => prevNodes.filter((n) => n.id !== diffArrowNodeId));
+      setNodes((prevNodes) =>
+        prevNodes.filter((n) => n.id !== diffArrowNodeId),
+      );
     }
-  }, [diffMode.active, showDiffDialog, endDiffMode, setEdges, setNodes, diffArrowNodeId]);
+  }, [
+    diffMode.active,
+    showDiffDialog,
+    endDiffMode,
+    setEdges,
+    setNodes,
+    diffArrowNodeId,
+  ]);
 
   return (
-    <div className="flex flex-col h-full w-full relative" ref={containerRef}
+    <div
+      className="flex flex-col h-full w-full relative"
+      ref={containerRef}
       onMouseMove={handleMouseMove}
       onClick={handleCanvasClick}
     >
@@ -739,8 +788,12 @@ export function GitGraphView({ repoPath, isActive, isDarkMode }: GitGraphViewPro
           // Clean up diff mode when dialog is closed
           endDiffMode();
           // Remove diff arrow and virtual node
-          setEdges((prevEdges) => prevEdges.filter((e) => e.id !== "diff-arrow"));
-          setNodes((prevNodes) => prevNodes.filter((n) => n.id !== diffArrowNodeId));
+          setEdges((prevEdges) =>
+            prevEdges.filter((e) => e.id !== "diff-arrow"),
+          );
+          setNodes((prevNodes) =>
+            prevNodes.filter((n) => n.id !== diffArrowNodeId),
+          );
         }}
         repoPath={repoPath}
         sourceCommitId={diffMode.sourceCommitId}

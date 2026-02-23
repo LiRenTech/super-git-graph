@@ -1,6 +1,6 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
-import { GitCommit, getBranchHue } from "@/lib/graphUtils";
+import { GitCommit, getBranchHue, getAuthorHue } from "@/lib/graphUtils";
 import {
   GitBranch,
   Tag,
@@ -43,16 +43,6 @@ export function CommitNode(props: NodeProps) {
     repoPath: string;
   };
 
-  // Debug logging
-  console.log(
-    "Commit data:",
-    typedData.commit.id,
-    "HEAD refs:",
-    typedData.commit.refs,
-    "head_type:",
-    typedData.commit.head_type,
-  );
-
   // Determine HEAD type using backend-provided head_type field
   const hasHeadRef = typedData.commit?.refs?.includes("HEAD") || false;
   const headType = typedData.commit?.head_type; // "detached" or "branch" or undefined
@@ -76,6 +66,8 @@ export function CommitNode(props: NodeProps) {
   const isStash = typedData.commit?.refs?.some((r: string) =>
     r.startsWith("stash@"),
   );
+  const authorHue = getAuthorHue(typedData.commit?.author || "");
+  const isSpecialNode = isDetachedHead || isBranchHead || isRoot || isUncommitted || isStash;
 
   const {
     showHash,
@@ -501,7 +493,9 @@ export function CommitNode(props: NodeProps) {
                     ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900"
                     : isRoot
                       ? "border-primary"
-                      : "border-primary",
+                      : isSpecialNode
+                        ? "border-primary"
+                        : "border-[hsl(var(--author-hue),60%,60%)] dark:border-[hsl(var(--author-hue),60%,50%)]",
                 isUncommitted
                   ? "border-dashed border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-zinc-800"
                   : "",
@@ -515,6 +509,7 @@ export function CommitNode(props: NodeProps) {
                 isMerge && !selected && "opacity-50",
                 "shadow-sm dark:shadow-none",
               )}
+              style={{ "--author-hue": authorHue } as React.CSSProperties}
             >
               {isRoot && (
                 <div className="absolute inset-0 rounded-full border-2 border-primary m-0.5" />
