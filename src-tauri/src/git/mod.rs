@@ -1,7 +1,8 @@
 use std::fs;
+use std::str::FromStr;
 
 #[allow(unused_imports)]
-use git2::{AnnotatedCommit, ObjectType, Oid, Repository, Sort, StatusOptions};
+use git2::{AnnotatedCommit, BranchType, ObjectType, Oid, Repository, Sort, StatusOptions};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -682,6 +683,53 @@ pub fn push_branch(repo_path: String, branch_name: String) -> Result<(), String>
     remote
         .push(&[&refspec], Some(&mut push_options))
         .map_err(|e| format!("Failed to push to remote: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_branch(repo_path: String, branch_name: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    // Try to find the local branch
+    let mut branch = repo
+        .find_branch(&branch_name, BranchType::Local)
+        .map_err(|e| format!("Branch not found: {}", e))?;
+
+    // Check if this is the current branch (HEAD)
+    if branch.is_head() {
+        return Err(
+            "Cannot delete the current branch. Please checkout another branch first.".to_string(),
+        );
+    }
+
+    // Delete the branch
+    branch
+        .delete()
+        .map_err(|e| format!("Failed to delete branch: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn create_branch(
+    repo_path: String,
+    branch_name: String,
+    commit_id: String,
+) -> Result<(), String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    // Parse the commit ID to OID
+    let oid = Oid::from_str(&commit_id).map_err(|e| format!("Invalid commit ID: {}", e))?;
+
+    // Find the commit object
+    let commit = repo
+        .find_commit(oid)
+        .map_err(|e| format!("Commit not found: {}", e))?;
+
+    // Create the new branch
+    repo.branch(&branch_name, &commit, false)
+        .map_err(|e| format!("Failed to create branch: {}", e))?;
 
     Ok(())
 }

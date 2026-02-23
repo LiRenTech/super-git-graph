@@ -45,6 +45,8 @@ interface GitGraphState {
   checkoutBranch: (repoPath: string, branchName: string) => Promise<void>;
   pullBranch: (repoPath: string, branchName: string) => Promise<void>;
   pushBranch: (repoPath: string, branchName: string) => Promise<void>;
+  createBranch: (repoPath: string, branchName: string, commitId: string) => Promise<void>;
+  deleteBranch: (repoPath: string, branchName: string) => Promise<void>;
   // Loading state methods
   setLoading: (isLoading: boolean, operation?: string) => void;
   // Add method to set refresh callback
@@ -207,6 +209,59 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       
     } catch (error) {
       console.error('Failed to push branch:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  createBranch: async (repoPath: string, branchName: string, commitId: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `creating branch ${branchName}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('create_branch', {
+        repoPath,
+        branchName,
+        commitId,
+      });
+      
+      // Trigger refresh after successful branch creation
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to create branch:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  deleteBranch: async (repoPath: string, branchName: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `deleting branch ${branchName}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('delete_branch', {
+        repoPath,
+        branchName,
+      });
+      
+      // Trigger refresh after successful branch deletion
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to delete branch:', error);
       throw error;
     } finally {
       setLoading(false);

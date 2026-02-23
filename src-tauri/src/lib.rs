@@ -50,6 +50,8 @@ pub fn run() {
             git::checkout_branch,
             git::pull_branch,
             git::push_branch,
+            git::create_branch,
+            git::delete_branch,
             reveal_store_file
         ])
         .run(tauri::generate_context!())
