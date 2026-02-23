@@ -15,6 +15,7 @@ interface GitGraphState {
   showMessage: boolean;
   showBackground: boolean;
   showCoordinates: boolean;
+  showMergeTitles: boolean;
   isDragSubtreeMode: boolean;
   visibleBranchNames: string[];
   focusNodeId: string | null;
@@ -35,6 +36,7 @@ interface GitGraphState {
   setShowMessage: (show: boolean) => void;
   setShowBackground: (show: boolean) => void;
   setShowCoordinates: (show: boolean) => void;
+  setShowMergeTitles: (show: boolean) => void;
   setIsDragSubtreeMode: (isDragSubtreeMode: boolean) => void;
   setVisibleBranchNames: (names: string[]) => void;
   setFocusNodeId: (id: string | null) => void;
@@ -64,6 +66,7 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   showMessage: true,
   showBackground: true,
   showCoordinates: false,
+  showMergeTitles: false,
   isDragSubtreeMode: false,
   visibleBranchNames: [],
   focusNodeId: null,
@@ -82,6 +85,7 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   setShowMessage: (show) => set({ showMessage: show }),
   setShowBackground: (show) => set({ showBackground: show }),
   setShowCoordinates: (show) => set({ showCoordinates: show }),
+  setShowMergeTitles: (show: boolean) => set({ showMergeTitles: show }),
   setIsDragSubtreeMode: (mode) => set({ isDragSubtreeMode: mode }),
   setVisibleBranchNames: (names) => set({ visibleBranchNames: names }),
   setFocusNodeId: (id) => set({ focusNodeId: id }),

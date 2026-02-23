@@ -81,13 +81,14 @@ export function getLayoutedElements(commits: GitCommit[]): LayoutedElements {
       commit.parents.forEach((parentId, index) => {
         if (commits.some((c) => c.id === parentId)) {
           const targetHue = getAuthorHue(commit.author);
-          const style: { stroke: string; strokeDasharray?: string } = { 
+          const style: { stroke: string; strokeWidth?: number; strokeDasharray?: string } = { 
             stroke: `hsl(${targetHue}, 60%, 60%)`,
+            strokeWidth: 4,
           };
           // For merge commits, only the second and subsequent parents (merged branches) get dashed lines
           // First parent (main line) remains solid
           if (commit.parents.length > 1 && index > 0) {
-            style.strokeDasharray = "5,5";
+            style.strokeDasharray = "10,10";
           }
           edges.push({
             id: `${parentId}-${commit.id}`,

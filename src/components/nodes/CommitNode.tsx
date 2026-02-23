@@ -67,11 +67,13 @@ export function CommitNode(props: NodeProps) {
     r.startsWith("stash@"),
   );
   const authorHue = getAuthorHue(typedData.commit?.author || "");
-  const isSpecialNode = isDetachedHead || isBranchHead || isRoot || isUncommitted || isStash;
+  const isSpecialNode =
+    isDetachedHead || isBranchHead || isRoot || isUncommitted || isStash;
 
   const {
     showHash,
     showMessage,
+    showMergeTitles,
     showCoordinates,
     startDiffMode,
     diffMode,
@@ -537,7 +539,7 @@ export function CommitNode(props: NodeProps) {
 
             {/* Label (Below the circle) */}
             <div className="absolute top-6 left-1/2 -translate-x-1/2 w-48 text-center pointer-events-none">
-              {showMessage && (
+              {showMessage && (showMergeTitles || !isMerge) && (
                 <p
                   className={cn(
                     "text-xs font-medium truncate absolute left-[calc(50%+14px)] -top-5 text-left max-w-[200px] text-foreground",

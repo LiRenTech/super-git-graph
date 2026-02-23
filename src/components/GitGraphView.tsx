@@ -12,7 +12,7 @@ import {
   OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { RefreshCw, ArrowUp } from "lucide-react";
+import { RefreshCw, ArrowUp, Eye, EyeOff } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,8 @@ export function GitGraphView({
     setDiffTarget,
     setRepoPath,
     setRefreshCallback,
+    showMergeTitles,
+    setShowMergeTitles,
   } = useGitGraphStore();
   // const { showCoordinates, setShowCoordinates } = useGitGraphStore();
 
@@ -589,12 +591,12 @@ export function GitGraphView({
             animated: false,
             style: {
               stroke: "#3b82f6",
-              strokeWidth: 2,
+              strokeWidth: 4,
             },
             markerEnd: {
               type: "arrowclosed",
               color: "#3b82f6",
-              strokeWidth: 2,
+              strokeWidth: 4,
               orient: "auto",
             },
             focusable: false,
@@ -743,6 +745,23 @@ export function GitGraphView({
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setShowMergeTitles(!showMergeTitles)}
+          className="bg-background/80 backdrop-blur"
+          title={
+            showMergeTitles
+              ? "Hide merge commit titles"
+              : "Show merge commit titles"
+          }
+        >
+          {showMergeTitles ? (
+            <Eye className="w-4 h-4" />
+          ) : (
+            <EyeOff className="w-4 h-4" />
+          )}
+        </Button>
         <Button
           variant="outline"
           size="icon"
