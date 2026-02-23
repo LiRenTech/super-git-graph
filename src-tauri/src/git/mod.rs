@@ -1,5 +1,4 @@
 use std::fs;
-use std::str::FromStr;
 
 #[allow(unused_imports)]
 use git2::{AnnotatedCommit, BranchType, ObjectType, Oid, Repository, Sort, StatusOptions};
