@@ -90,5 +90,4 @@ export function getBranchHue(name: string) {
   return Math.abs(hash % 360);
 }
 
-const nodeWidth = 60; // Just enough for the circle + padding
-const nodeHeight = 60; // Enough for circle + label below
+

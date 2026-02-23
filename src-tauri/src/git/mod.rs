@@ -1,6 +1,7 @@
 use std::fs;
 
-use git2::{Oid, Repository, Sort, StatusOptions, ObjectType};
+#[allow(unused_imports)]
+use git2::{AnnotatedCommit, ObjectType, Oid, Repository, Sort, StatusOptions};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -86,7 +87,7 @@ pub fn get_commits(
 
     // Instead of only pushing HEAD, push all references to ensure we get complete history
     // This ensures that even in detached HEAD state, we can see the full commit graph
-    
+
     // Push HEAD if it exists
     if let Ok(head) = repo.head() {
         if let Some(target) = head.target() {
@@ -151,7 +152,7 @@ pub fn get_commits(
     let head_type = {
         let git_dir = repo.path();
         let head_file = git_dir.join("HEAD");
-        
+
         if let Ok(content) = fs::read_to_string(&head_file) {
             println!("DEBUG: HEAD file content: {:?}", content.trim());
             if content.starts_with("ref: ") {
@@ -159,7 +160,7 @@ pub fn get_commits(
                 println!("DEBUG: Detected as BRANCH HEAD from HEAD file");
                 Some("branch".to_string())
             } else {
-                // Direct reference (detached HEAD)  
+                // Direct reference (detached HEAD)
                 println!("DEBUG: Detected as DETACHED HEAD from HEAD file");
                 Some("detached".to_string())
             }
@@ -340,12 +341,10 @@ pub fn get_diff(
 
     let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
 
-    let old_oid = Oid::from_str(&old_commit).map_err(|e| {
-        format!("Invalid commit ID '{}': {}", old_commit, e)
-    })?;
-    let new_oid = Oid::from_str(&new_commit).map_err(|e| {
-        format!("Invalid commit ID '{}': {}", new_commit, e)
-    })?;
+    let old_oid = Oid::from_str(&old_commit)
+        .map_err(|e| format!("Invalid commit ID '{}': {}", old_commit, e))?;
+    let new_oid = Oid::from_str(&new_commit)
+        .map_err(|e| format!("Invalid commit ID '{}': {}", new_commit, e))?;
 
     let old_commit_obj = repo.find_commit(old_oid).map_err(|e| e.to_string())?;
     let new_commit_obj = repo.find_commit(new_oid).map_err(|e| e.to_string())?;
@@ -365,7 +364,9 @@ pub fn get_diff(
         println!("Processing delta");
 
         // Get the file path from either new_file or old_file
-        let file_path = delta.new_file().path()
+        let file_path = delta
+            .new_file()
+            .path()
             .or_else(|| delta.old_file().path())
             .map(|p| {
                 let path_str = p.to_string_lossy().to_string();
@@ -424,7 +425,11 @@ fn get_file_content(
     };
 
     if tree_entry.kind() != Some(ObjectType::Blob) {
-        eprintln!("Entry {:?} is not a blob, it's a {:?}", path_to_find, tree_entry.kind());
+        eprintln!(
+            "Entry {:?} is not a blob, it's a {:?}",
+            path_to_find,
+            tree_entry.kind()
+        );
         return String::new();
     }
 
@@ -443,29 +448,28 @@ fn get_file_content(
 #[tauri::command]
 pub fn checkout_commit(repo_path: String, commit_id: String) -> Result<(), String> {
     let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
-    
+
     // Handle special case for working-copy (shouldn't happen, but just in case)
     if commit_id == "working-copy" {
         return Err("Cannot checkout working-copy".to_string());
     }
-    
+
     // Parse the commit ID
-    let oid = Oid::from_str(&commit_id).map_err(|e| {
-        format!("Invalid commit ID '{}': {}", commit_id, e)
-    })?;
-    
+    let oid = Oid::from_str(&commit_id)
+        .map_err(|e| format!("Invalid commit ID '{}': {}", commit_id, e))?;
+
     // Find the commit object to verify it exists
     let _commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
-    
+
     // Create an object from the commit
     let obj = repo.find_object(oid, None).map_err(|e| e.to_string())?;
-    
+
     // Checkout the commit without force
     // This will behave like standard git checkout
     let mut checkout_builder = git2::build::CheckoutBuilder::new();
     // Remove force() to allow standard git behavior
     // This will fail if there are uncommitted changes that would be overwritten
-    
+
     match repo.checkout_tree(&obj, Some(&mut checkout_builder)) {
         Ok(()) => {
             // Update HEAD to point to this commit (detached HEAD state)
@@ -486,25 +490,34 @@ pub fn checkout_commit(repo_path: String, commit_id: String) -> Result<(), Strin
 #[tauri::command]
 pub fn checkout_branch(repo_path: String, branch_name: String) -> Result<(), String> {
     let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
-    
+
     // Determine the correct reference name and HEAD target
     let (ref_name, head_target) = {
         // First try local branch (refs/heads/...)
-        if let Ok(branch_ref) = repo.find_reference(&format!("refs/heads/{}", branch_name)) {
-            (format!("refs/heads/{}", branch_name), format!("refs/heads/{}", branch_name))
-        } 
+        if let Ok(_branch_ref) = repo.find_reference(&format!("refs/heads/{}", branch_name)) {
+            (
+                format!("refs/heads/{}", branch_name),
+                format!("refs/heads/{}", branch_name),
+            )
+        }
         // Then try remote branch (refs/remotes/...)
-        else if let Ok(remote_ref) = repo.find_reference(&format!("refs/remotes/{}", branch_name)) {
+        else if let Ok(remote_ref) = repo.find_reference(&format!("refs/remotes/{}", branch_name))
+        {
             // For remote branches, we need to create a local tracking branch or checkout in detached HEAD
             // For simplicity, let's checkout the remote branch directly (detached HEAD)
             // But first check if there's already a local branch with the same name (without remote prefix)
             let local_branch_name = branch_name.split('/').last().unwrap_or(&branch_name);
             if let Ok(_) = repo.find_reference(&format!("refs/heads/{}", local_branch_name)) {
                 // Local branch exists, use it
-                (format!("refs/heads/{}", local_branch_name), format!("refs/heads/{}", local_branch_name))
+                (
+                    format!("refs/heads/{}", local_branch_name),
+                    format!("refs/heads/{}", local_branch_name),
+                )
             } else {
                 // No local branch, checkout the remote commit directly (detached HEAD)
-                let target_oid = remote_ref.target().ok_or_else(|| "Remote branch has no target".to_string())?;
+                let target_oid = remote_ref
+                    .target()
+                    .ok_or_else(|| "Remote branch has no target".to_string())?;
                 return checkout_commit_by_oid(&repo, target_oid, &repo_path);
             }
         }
@@ -514,7 +527,9 @@ pub fn checkout_branch(repo_path: String, branch_name: String) -> Result<(), Str
                 (branch_name.clone(), branch_name.clone())
             } else {
                 // Non-local reference, checkout commit directly
-                let target_oid = full_ref.target().ok_or_else(|| "Reference has no target".to_string())?;
+                let target_oid = full_ref
+                    .target()
+                    .ok_or_else(|| "Reference has no target".to_string())?;
                 return checkout_commit_by_oid(&repo, target_oid, &repo_path);
             }
         }
@@ -523,20 +538,24 @@ pub fn checkout_branch(repo_path: String, branch_name: String) -> Result<(), Str
             return Err(format!("Branch '{}' not found", branch_name));
         }
     };
-    
+
     // Get the target commit OID
     let branch_ref = repo.find_reference(&ref_name).map_err(|e| e.to_string())?;
-    let target_oid = branch_ref.target().ok_or_else(|| "Branch has no target commit".to_string())?;
-    
+    let target_oid = branch_ref
+        .target()
+        .ok_or_else(|| "Branch has no target commit".to_string())?;
+
     // Find the commit object to verify it exists
     let _commit = repo.find_commit(target_oid).map_err(|e| e.to_string())?;
-    
+
     // Create an object from the commit
-    let obj = repo.find_object(target_oid, None).map_err(|e| e.to_string())?;
-    
+    let obj = repo
+        .find_object(target_oid, None)
+        .map_err(|e| e.to_string())?;
+
     // Checkout the branch
     let mut checkout_builder = git2::build::CheckoutBuilder::new();
-    
+
     match repo.checkout_tree(&obj, Some(&mut checkout_builder)) {
         Ok(()) => {
             // Update HEAD to point to the branch
@@ -548,17 +567,20 @@ pub fn checkout_branch(repo_path: String, branch_name: String) -> Result<(), Str
             if e.message().contains("conflict") || e.message().contains("dirty") {
                 Err("Cannot checkout: You have uncommitted changes that would be overwritten. Please commit or stash your changes first.".to_string())
             } else {
-                Err(format!("Failed to checkout branch '{}': {}", branch_name, e))
+                Err(format!(
+                    "Failed to checkout branch '{}': {}",
+                    branch_name, e
+                ))
             }
         }
     }
 }
 
 // Helper function to checkout a commit by OID (detached HEAD)
-fn checkout_commit_by_oid(repo: &Repository, oid: Oid, repo_path: &str) -> Result<(), String> {
+fn checkout_commit_by_oid(repo: &Repository, oid: Oid, _repo_path: &str) -> Result<(), String> {
     let obj = repo.find_object(oid, None).map_err(|e| e.to_string())?;
     let mut checkout_builder = git2::build::CheckoutBuilder::new();
-    
+
     match repo.checkout_tree(&obj, Some(&mut checkout_builder)) {
         Ok(()) => {
             // Update HEAD to point to this commit (detached HEAD state)
@@ -573,4 +595,93 @@ fn checkout_commit_by_oid(repo: &Repository, oid: Oid, repo_path: &str) -> Resul
             }
         }
     }
+}
+
+#[tauri::command]
+pub fn pull_branch(repo_path: String, branch_name: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    // Get the remote (default to origin)
+    let remote_name = "origin";
+    let mut remote = repo.find_remote(remote_name).map_err(|e| e.to_string())?;
+
+    // Fetch from remote
+    let mut fetch_options = git2::FetchOptions::new();
+    remote
+        .fetch(&[&branch_name], Some(&mut fetch_options), None)
+        .map_err(|e| format!("Failed to fetch from remote: {}", e))?;
+
+    // Get the fetched remote branch reference
+    let remote_branch_ref = format!("refs/remotes/{}/{}", remote_name, branch_name);
+    let remote_ref = repo
+        .find_reference(&remote_branch_ref)
+        .map_err(|e| format!("Remote branch not found after fetch: {}", e))?;
+    let remote_commit = remote_ref
+        .peel_to_commit()
+        .map_err(|e| format!("Failed to get commit from remote ref: {}", e))?;
+
+    // Get the current branch reference
+    let local_branch_ref = format!("refs/heads/{}", branch_name);
+    let mut local_ref = repo
+        .find_reference(&local_branch_ref)
+        .map_err(|e| format!("Local branch not found: {}", e))?;
+    let _local_commit = local_ref
+        .peel_to_commit()
+        .map_err(|e| format!("Failed to get commit from local branch: {}", e))?;
+
+    // Merge remote into local (fast-forward if possible)
+    let annotated_remote = repo
+        .reference_to_annotated_commit(&remote_ref)
+        .map_err(|e| format!("Failed to create annotated commit: {}", e))?;
+    let their = [&annotated_remote];
+    let analysis = repo
+        .merge_analysis(&their[..])
+        .map_err(|e| format!("Merge analysis failed: {}", e))?;
+
+    if analysis.0.is_fast_forward() {
+        // Fast-forward merge
+        local_ref
+            .set_target(remote_commit.id(), "Fast-forward merge")
+            .map_err(|e| format!("Failed to fast-forward: {}", e))?;
+
+        // Update working directory
+        let obj = repo
+            .find_object(remote_commit.id(), None)
+            .map_err(|e| e.to_string())?;
+        let mut checkout_builder = git2::build::CheckoutBuilder::new();
+        repo.checkout_tree(&obj, Some(&mut checkout_builder))
+            .map_err(|e| format!("Failed to checkout updated branch: {}", e))?;
+
+        Ok(())
+    } else if analysis.0.is_normal() {
+        // Normal merge required - for simplicity, we'll just error and ask user to merge manually
+        Err("Merge required. Please merge manually.".to_string())
+    } else {
+        Err("No changes to pull.".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn push_branch(repo_path: String, branch_name: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    // Get the remote (default to origin)
+    let remote_name = "origin";
+    let mut remote = repo.find_remote(remote_name).map_err(|e| e.to_string())?;
+
+    // Get the local branch reference
+    let local_branch_ref = format!("refs/heads/{}", branch_name);
+    let _local_ref = repo
+        .find_reference(&local_branch_ref)
+        .map_err(|e| format!("Local branch not found: {}", e))?;
+
+    // Push to remote
+    let refspec = format!("{}:{}", local_branch_ref, local_branch_ref);
+    let mut push_options = git2::PushOptions::new();
+
+    remote
+        .push(&[&refspec], Some(&mut push_options))
+        .map_err(|e| format!("Failed to push to remote: {}", e))?;
+
+    Ok(())
 }

@@ -23,6 +23,9 @@ interface GitGraphState {
     sourceCommitId: string | null;
     targetCommitId: string | null;
   };
+  // Loading state
+  isLoading: boolean;
+  loadingOperation: string | null;
   // Add refresh callback with repoPath parameter
   onRefreshRequest: ((repoPath: string) => void) | null;
   setRepoPath: (path: string) => void;
@@ -40,6 +43,10 @@ interface GitGraphState {
   setDiffTarget: (targetCommitId: string) => void;
   checkoutCommit: (repoPath: string, commitId: string) => Promise<void>;
   checkoutBranch: (repoPath: string, branchName: string) => Promise<void>;
+  pullBranch: (repoPath: string, branchName: string) => Promise<void>;
+  pushBranch: (repoPath: string, branchName: string) => Promise<void>;
+  // Loading state methods
+  setLoading: (isLoading: boolean, operation?: string) => void;
   // Add method to set refresh callback
   setRefreshCallback: (callback: (repoPath: string) => void) => void;
   // Add method to trigger refresh
@@ -63,6 +70,8 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
     sourceCommitId: null,
     targetCommitId: null,
   },
+  isLoading: false,
+  loadingOperation: null,
   onRefreshRequest: null,
   setRepoPath: (path) => set({ repoPath: path }),
   setGraphData: (nodes, edges) => set({ nodes, edges }),
@@ -102,7 +111,10 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       throw new Error('No repository path provided');
     }
     
+    const { setLoading } = get();
+    
     try {
+      setLoading(true, `checking out commit ${commitId.substring(0, 7)}`);
       // Import invoke here to avoid circular dependencies
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('checkout_commit', {
@@ -117,6 +129,8 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
     } catch (error) {
       console.error('Failed to checkout commit:', error);
       throw error;
+    } finally {
+      setLoading(false);
     }
   },
   checkoutBranch: async (repoPath: string, branchName: string) => {
@@ -124,7 +138,10 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       throw new Error('No repository path provided');
     }
     
+    const { setLoading } = get();
+    
     try {
+      setLoading(true, `checking out ${branchName}`);
       // Import invoke here to avoid circular dependencies
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('checkout_branch', {
@@ -139,8 +156,66 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
     } catch (error) {
       console.error('Failed to checkout branch:', error);
       throw error;
+    } finally {
+      setLoading(false);
     }
   },
+  pullBranch: async (repoPath: string, branchName: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `pulling ${branchName}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('pull_branch', {
+        repoPath,
+        branchName,
+      });
+      
+      // Trigger refresh after successful pull
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to pull branch:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  pushBranch: async (repoPath: string, branchName: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `pushing ${branchName}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('push_branch', {
+        repoPath,
+        branchName,
+      });
+      
+      // Trigger refresh after successful push
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to push branch:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  setLoading: (isLoading: boolean, operation?: string) => set({ 
+    isLoading, 
+    loadingOperation: operation || null 
+  }),
   setRefreshCallback: (callback: (repoPath: string) => void) => set({ onRefreshRequest: callback }),
   refreshGraph: () => {
     const { onRefreshRequest, repoPath } = get();

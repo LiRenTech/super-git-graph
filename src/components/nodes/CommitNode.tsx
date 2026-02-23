@@ -1,7 +1,16 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { GitCommit, getBranchHue } from "@/lib/graphUtils";
-import { GitBranch, Tag, Copy, ArrowLeftRight, GitCompare } from "lucide-react";
+import {
+  GitBranch,
+  Tag,
+  Copy,
+  ArrowLeftRight,
+  GitCompare,
+  GitPullRequest,
+  Upload,
+  Loader2,
+} from "lucide-react";
 import { useGitGraphStore } from "@/store/gitGraphStore";
 import {
   Popover,
@@ -66,6 +75,10 @@ export function CommitNode(props: NodeProps) {
     diffMode,
     checkoutCommit,
     checkoutBranch,
+    pullBranch,
+    pushBranch,
+    isLoading,
+    loadingOperation,
   } = useGitGraphStore();
   const isDiffSource = diffMode.active && diffMode.sourceCommitId === id;
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -82,6 +95,7 @@ export function CommitNode(props: NodeProps) {
   };
 
   const handleCheckout = async () => {
+    if (isLoading) return; // Prevent multiple clicks
     if (isUncommitted) {
       toast.error("Cannot checkout uncommitted changes");
       return;
@@ -93,11 +107,20 @@ export function CommitNode(props: NodeProps) {
       toast.success("Successfully checked out commit");
     } catch (error) {
       console.error("Checkout failed:", error);
-      toast.error("Failed to checkout commit");
+      // Show more detailed error message
+      if (typeof error === "string") {
+        toast.error(`Failed to checkout commit: ${error}`);
+      } else if (error instanceof Error) {
+        toast.error(`Failed to checkout commit: ${error.message}`);
+      } else {
+        toast.error("Failed to checkout commit - unknown error");
+      }
     }
   };
 
   const handleBranchCheckout = async (branchName: string) => {
+    if (isLoading) return; // Prevent multiple clicks
+
     try {
       setBranchMenuOpen(null);
       await checkoutBranch(typedData.repoPath, branchName);
@@ -122,7 +145,52 @@ export function CommitNode(props: NodeProps) {
       toast.success(`Copied branch name to clipboard`);
     } catch (err) {
       console.error("Failed to copy branch name:", err);
-      toast.error("Failed to copy to clipboard");
+      // Show more detailed error message
+      if (typeof err === "string") {
+        toast.error(`Failed to copy to clipboard: ${err}`);
+      } else if (err instanceof Error) {
+        toast.error(`Failed to copy to clipboard: ${err.message}`);
+      } else {
+        toast.error("Failed to copy to clipboard - unknown error");
+      }
+    }
+  };
+
+  const handleBranchPull = async (branchName: string) => {
+    if (isLoading) return; // Prevent multiple clicks
+
+    try {
+      setBranchMenuOpen(null);
+      await pullBranch(typedData.repoPath, branchName);
+      toast.success(`Successfully pulled branch: ${branchName}`);
+    } catch (error) {
+      console.error("Failed to pull branch:", error);
+      if (typeof error === "string") {
+        toast.error(`Failed to pull branch: ${error}`);
+      } else if (error instanceof Error) {
+        toast.error(`Failed to pull branch: ${error.message}`);
+      } else {
+        toast.error("Failed to pull branch - unknown error");
+      }
+    }
+  };
+
+  const handleBranchPush = async (branchName: string) => {
+    if (isLoading) return; // Prevent multiple clicks
+
+    try {
+      setBranchMenuOpen(null);
+      await pushBranch(typedData.repoPath, branchName);
+      toast.success(`Successfully pushed branch: ${branchName}`);
+    } catch (error) {
+      console.error("Failed to push branch:", error);
+      if (typeof error === "string") {
+        toast.error(`Failed to push branch: ${error}`);
+      } else if (error instanceof Error) {
+        toast.error(`Failed to push branch: ${error.message}`);
+      } else {
+        toast.error("Failed to push branch - unknown error");
+      }
     }
   };
 
@@ -226,9 +294,54 @@ export function CommitNode(props: NodeProps) {
                       size="sm"
                       className="justify-start gap-2 h-8"
                       onClick={() => handleBranchCheckout(branch)}
+                      disabled={
+                        isLoading &&
+                        loadingOperation?.startsWith(`checking out ${branch}`)
+                      }
                     >
-                      <ArrowLeftRight className="w-4 h-4" />
+                      {isLoading &&
+                      loadingOperation?.startsWith(`checking out ${branch}`) ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ArrowLeftRight className="w-4 h-4" />
+                      )}
                       <span className="text-xs">Checkout branch</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start gap-2 h-8"
+                      onClick={() => handleBranchPull(branch)}
+                      disabled={
+                        isLoading &&
+                        loadingOperation?.startsWith(`pulling ${branch}`)
+                      }
+                    >
+                      {isLoading &&
+                      loadingOperation?.startsWith(`pulling ${branch}`) ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <GitPullRequest className="w-4 h-4" />
+                      )}
+                      <span className="text-xs">Pull branch</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start gap-2 h-8"
+                      onClick={() => handleBranchPush(branch)}
+                      disabled={
+                        isLoading &&
+                        loadingOperation?.startsWith(`pushing ${branch}`)
+                      }
+                    >
+                      {isLoading &&
+                      loadingOperation?.startsWith(`pushing ${branch}`) ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
+                      <span className="text-xs">Push branch</span>
                     </Button>
                     <Button
                       variant="ghost"

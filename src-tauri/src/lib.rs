@@ -48,6 +48,8 @@ pub fn run() {
             git::get_diff,
             git::checkout_commit,
             git::checkout_branch,
+            git::pull_branch,
+            git::push_branch,
             reveal_store_file
         ])
         .run(tauri::generate_context!())
