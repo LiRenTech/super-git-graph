@@ -732,3 +732,32 @@ pub fn create_branch(
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn delete_remote_branch(
+    repo_path: String,
+    branch_name: String,
+) -> Result<(), String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    // Parse remote and branch name (format: remote/branch)
+    let parts: Vec<&str> = branch_name.splitn(2, '/').collect();
+    if parts.len() != 2 {
+        return Err(format!("Invalid remote branch name: {}. Expected format: remote/branch", branch_name));
+    }
+    let remote_name = parts[0];
+    let remote_branch = parts[1];
+
+    // Get the remote
+    let mut remote = repo.find_remote(remote_name).map_err(|e| format!("Remote '{}' not found: {}", remote_name, e))?;
+
+    // Build refspec for deletion: :refs/heads/<branch>
+    let refspec = format!(":refs/heads/{}", remote_branch);
+
+    // Push with delete flag
+    let mut push_options = git2::PushOptions::new();
+    remote.push(&[&refspec], Some(&mut push_options))
+        .map_err(|e| format!("Failed to delete remote branch: {}", e))?;
+
+    Ok(())
+}

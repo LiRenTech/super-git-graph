@@ -117,6 +117,14 @@ export function getBranchHue(name: string) {
   return Math.abs(hash % 360);
 }
 
+export function isRemoteBranch(name: string): boolean {
+  // Check if the branch name is a remote branch (contains slash and starts with common remote names)
+  return name.includes("/") &&
+    (name.startsWith("origin/") ||
+     name.startsWith("upstream/") ||
+     name.startsWith("fork/"));
+}
+
 export function getAuthorHue(author: string) {
   // Use the entire author string for hashing
   let hash = 0;

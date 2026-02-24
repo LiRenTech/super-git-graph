@@ -52,6 +52,7 @@ pub fn run() {
             git::push_branch,
             git::create_branch,
             git::delete_branch,
+            git::delete_remote_branch,
             reveal_store_file
         ])
         .run(tauri::generate_context!())

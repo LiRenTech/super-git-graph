@@ -1,6 +1,11 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
-import { GitCommit, getBranchHue, getAuthorHue } from "@/lib/graphUtils";
+import {
+  GitCommit,
+  getBranchHue,
+  getAuthorHue,
+  isRemoteBranch,
+} from "@/lib/graphUtils";
 import {
   GitBranch,
   Tag,
@@ -83,6 +88,7 @@ export function CommitNode(props: NodeProps) {
     pushBranch,
     createBranch,
     deleteBranch,
+    deleteRemoteBranch,
     isLoading,
     loadingOperation,
   } = useGitGraphStore();
@@ -125,21 +131,30 @@ export function CommitNode(props: NodeProps) {
   const handleBranchDelete = async (branchName: string) => {
     if (isLoading) return;
 
+    // Determine if this is a remote branch
+    const isRemote = isRemoteBranch(branchName);
+
     try {
       setBranchMenuOpen(null);
-      await deleteBranch(typedData.repoPath, branchName);
-      toast.success(`Successfully deleted branch: ${branchName}`);
+      if (isRemote) {
+        await deleteRemoteBranch(typedData.repoPath, branchName);
+        toast.success(`Successfully deleted remote branch: ${branchName}`);
+      } else {
+        await deleteBranch(typedData.repoPath, branchName);
+        toast.success(`Successfully deleted branch: ${branchName}`);
+      }
       setIsDeleteBranchDialogOpen(false);
       setBranchToDelete(null);
     } catch (error) {
       console.error("Failed to delete branch:", error);
       // Show more detailed error message
+      const action = isRemote ? "delete remote branch" : "delete branch";
       if (typeof error === "string") {
-        toast.error(`Failed to delete branch: ${error}`);
+        toast.error(`Failed to ${action}: ${error}`);
       } else if (error instanceof Error) {
-        toast.error(`Failed to delete branch: ${error.message}`);
+        toast.error(`Failed to ${action}: ${error.message}`);
       } else {
-        toast.error("Failed to delete branch - unknown error");
+        toast.error(`Failed to ${action} - unknown error`);
       }
     }
   };
@@ -295,12 +310,8 @@ export function CommitNode(props: NodeProps) {
                 const hue = getBranchHue(branch);
                 // Fix: HEAD should be shown for the current branch regardless of how many branches point to this commit
                 // Determine if this branch is a remote branch (contains slash and starts with common remote names)
-                const isRemoteBranch =
-                  branch.includes("/") &&
-                  (branch.startsWith("origin/") ||
-                    branch.startsWith("upstream/") ||
-                    branch.startsWith("fork/"));
-                const isCurrentBranch = isBranchHead && !isRemoteBranch;
+                const isRemote = isRemoteBranch(branch);
+                const isCurrentBranch = isBranchHead && !isRemote;
 
                 return (
                   <Popover
@@ -420,33 +431,29 @@ export function CommitNode(props: NodeProps) {
                         <Copy className="w-4 h-4" />
                         <span className="text-xs">Copy branch name</span>
                       </Button>
-                      {!isRemoteBranch && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="justify-start gap-2 h-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
-                          onClick={() => {
-                            setBranchToDelete(branch);
-                            setIsDeleteBranchDialogOpen(true);
-                            setBranchMenuOpen(null);
-                          }}
-                          disabled={
-                            isLoading ||
-                            (isLoading &&
-                              loadingOperation?.startsWith(
-                                `deleting ${branch}`,
-                              ))
-                          }
-                        >
-                          {isLoading &&
-                          loadingOperation?.startsWith(`deleting ${branch}`) ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                          <span className="text-xs">Delete branch</span>
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start gap-2 h-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                        onClick={() => {
+                          setBranchToDelete(branch);
+                          setIsDeleteBranchDialogOpen(true);
+                          setBranchMenuOpen(null);
+                        }}
+                        disabled={
+                          isLoading ||
+                          (isLoading &&
+                            loadingOperation?.startsWith(`deleting ${branch}`))
+                        }
+                      >
+                        {isLoading &&
+                        loadingOperation?.startsWith(`deleting ${branch}`) ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                        <span className="text-xs">Delete branch</span>
+                      </Button>
                     </PopoverContent>
                   </Popover>
                 );
@@ -695,12 +702,19 @@ export function CommitNode(props: NodeProps) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete branch</DialogTitle>
+            <DialogTitle>
+              {branchToDelete && isRemoteBranch(branchToDelete)
+                ? "Delete remote branch"
+                : "Delete branch"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <div className="text-sm text-muted-foreground">
-                Are you sure you want to delete the branch{" "}
+                Are you sure you want to delete the{" "}
+                {branchToDelete && isRemoteBranch(branchToDelete)
+                  ? "remote branch"
+                  : "branch"}{" "}
                 <span className="font-medium text-foreground">
                   "{branchToDelete}"
                 </span>
@@ -708,12 +722,7 @@ export function CommitNode(props: NodeProps) {
               </div>
               {branchToDelete &&
               isBranchHead &&
-              !(
-                branchToDelete.includes("/") &&
-                (branchToDelete.startsWith("origin/") ||
-                  branchToDelete.startsWith("upstream/") ||
-                  branchToDelete.startsWith("fork/"))
-              ) ? (
+              !isRemoteBranch(branchToDelete) ? (
                 <div className="text-sm text-amber-600 dark:text-amber-400 mt-2">
                   Note: You cannot delete the current branch. If this is the
                   current branch, please checkout another branch first.
@@ -739,12 +748,13 @@ export function CommitNode(props: NodeProps) {
                 }}
                 disabled={!branchToDelete || isLoading}
               >
-                {isLoading &&
-                loadingOperation?.startsWith("deleting branch") ? (
+                {isLoading && loadingOperation?.startsWith("deleting") ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Deleting...
                   </>
+                ) : branchToDelete && isRemoteBranch(branchToDelete) ? (
+                  "Delete remote branch"
                 ) : (
                   "Delete branch"
                 )}

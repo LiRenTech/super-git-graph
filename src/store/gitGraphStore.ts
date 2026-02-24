@@ -49,6 +49,7 @@ interface GitGraphState {
   pushBranch: (repoPath: string, branchName: string) => Promise<void>;
   createBranch: (repoPath: string, branchName: string, commitId: string) => Promise<void>;
   deleteBranch: (repoPath: string, branchName: string) => Promise<void>;
+  deleteRemoteBranch: (repoPath: string, branchName: string) => Promise<void>;
   // Loading state methods
   setLoading: (isLoading: boolean, operation?: string) => void;
   // Add method to set refresh callback
@@ -253,7 +254,7 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
     const { setLoading } = get();
     
     try {
-      setLoading(true, `deleting branch ${branchName}`);
+      setLoading(true, `deleting ${branchName}`);
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('delete_branch', {
         repoPath,
@@ -266,6 +267,32 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       
     } catch (error) {
       console.error('Failed to delete branch:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  deleteRemoteBranch: async (repoPath: string, branchName: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `deleting ${branchName}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('delete_remote_branch', {
+        repoPath,
+        branchName,
+      });
+      
+      // Trigger refresh after successful branch deletion
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to delete remote branch:', error);
       throw error;
     } finally {
       setLoading(false);
