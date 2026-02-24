@@ -1,5 +1,5 @@
 
-import { GitBranch, Tag } from "lucide-react";
+import { GitBranch, Tag, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-export type SidebarView = "branch" | "tag" | null;
+export type SidebarView = "branch" | "tag" | "author" | null;
 
 interface ActivityBarProps {
   activeView: SidebarView;
@@ -65,6 +65,26 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
           </TooltipTrigger>
           <TooltipContent side="right">
             <p>Tags</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-10 w-10 rounded-md hover:bg-muted-foreground/20",
+                activeView === "author" &&
+                  "bg-background text-foreground shadow-sm hover:bg-background"
+              )}
+              onClick={() => handleViewClick("author")}
+            >
+              <User className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>Authors</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

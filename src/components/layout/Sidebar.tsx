@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { GitBranchList } from "@/components/sidebar/GitBranchList";
 import { GitTagList } from "@/components/sidebar/GitTagList";
+import { GitAuthorList } from "@/components/sidebar/GitAuthorList";
 import { SidebarView } from "./ActivityBar";
 
 interface SidebarProps {
@@ -67,6 +68,7 @@ export function Sidebar({ activeView }: SidebarProps) {
       <div className="h-full w-full overflow-hidden">
         {activeView === "branch" && <GitBranchList />}
         {activeView === "tag" && <GitTagList />}
+        {activeView === "author" && <GitAuthorList />}
       </div>
       
       {/* Resizer Handle */}
