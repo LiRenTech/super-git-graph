@@ -17,6 +17,7 @@ interface GitGraphState {
   showCoordinates: boolean;
   showMergeTitles: boolean;
   isDragSubtreeMode: boolean;
+  fixedLabelSize: boolean;
   visibleBranchNames: string[];
   focusNodeId: string | null;
   diffMode: {
@@ -38,6 +39,7 @@ interface GitGraphState {
   setShowCoordinates: (show: boolean) => void;
   setShowMergeTitles: (show: boolean) => void;
   setIsDragSubtreeMode: (isDragSubtreeMode: boolean) => void;
+  setFixedLabelSize: (fixed: boolean) => void;
   setVisibleBranchNames: (names: string[]) => void;
   setFocusNodeId: (id: string | null) => void;
   startDiffMode: (sourceCommitId: string) => void;
@@ -69,6 +71,7 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   showCoordinates: false,
   showMergeTitles: false,
   isDragSubtreeMode: false,
+  fixedLabelSize: true,
   visibleBranchNames: [],
   focusNodeId: null,
   diffMode: {
@@ -88,6 +91,7 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
   setShowCoordinates: (show) => set({ showCoordinates: show }),
   setShowMergeTitles: (show: boolean) => set({ showMergeTitles: show }),
   setIsDragSubtreeMode: (mode) => set({ isDragSubtreeMode: mode }),
+  setFixedLabelSize: (fixed: boolean) => set({ fixedLabelSize: fixed }),
   setVisibleBranchNames: (names) => set({ visibleBranchNames: names }),
   setFocusNodeId: (id) => set({ focusNodeId: id }),
   startDiffMode: (sourceCommitId) =>

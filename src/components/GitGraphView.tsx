@@ -49,6 +49,7 @@ export function GitGraphView({
   const containerRef = useRef<HTMLDivElement>(null);
   const {
     isDragSubtreeMode,
+    fixedLabelSize,
     setVisibleBranchNames,
     focusNodeId,
     setFocusNodeId,
@@ -496,15 +497,24 @@ export function GitGraphView({
     [repoPath, getNodes],
   );
 
-  const onMove = useCallback((viewport: Viewport) => {
-    if (containerRef.current) {
-      // Threshold where we start clamping the scale to keep labels readable
-      // Higher value = larger labels when zoomed out
-      const minScale = 1.0;
-      const scale = viewport.zoom < minScale ? minScale / viewport.zoom : 1;
-      containerRef.current.style.setProperty("--label-scale", scale.toString());
-    }
-  }, []);
+  const onMove = useCallback(
+    (viewport: Viewport) => {
+      if (containerRef.current) {
+        // Threshold where we start clamping the scale to keep labels readable
+        // Higher value = larger labels when zoomed out
+        const minScale = 1.0;
+        let scale = 1;
+        if (fixedLabelSize) {
+          scale = viewport.zoom < minScale ? minScale / viewport.zoom : 1;
+        }
+        containerRef.current.style.setProperty(
+          "--label-scale",
+          scale.toString(),
+        );
+      }
+    },
+    [fixedLabelSize],
+  );
 
   // Update visible branches on move end
   const onMoveEnd = useCallback(() => {

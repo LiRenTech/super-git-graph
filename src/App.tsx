@@ -13,6 +13,8 @@ import {
   MessageSquareText,
   Eye,
   EyeOff,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -45,6 +47,8 @@ function App() {
     setShowMessage,
     isDragSubtreeMode,
     setIsDragSubtreeMode,
+    fixedLabelSize,
+    setFixedLabelSize,
   } = useGitGraphStore();
 
   // Initialize dark mode
@@ -151,6 +155,8 @@ function App() {
                 </TooltipContent>
               </Tooltip>
 
+
+
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
                   <Button
@@ -170,6 +176,8 @@ function App() {
                   <p>{showHash ? "Hide Commit Hash" : "Show Commit Hash"}</p>
                 </TooltipContent>
               </Tooltip>
+
+
 
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
@@ -196,6 +204,28 @@ function App() {
                     {showMessage
                       ? "Hide Commit Message"
                       : "Show Commit Message"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setFixedLabelSize(!fixedLabelSize)}
+                    className={cn(fixedLabelSize && "bg-muted")}
+                  >
+                    {fixedLabelSize ? (
+                      <Pin className="w-4 h-4" />
+                    ) : (
+                      <PinOff className="w-4 h-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>
+                    {fixedLabelSize ? "Fixed label size: On" : "Fixed label size: Off"}
                   </p>
                 </TooltipContent>
               </Tooltip>
