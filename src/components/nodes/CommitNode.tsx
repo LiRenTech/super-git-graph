@@ -68,10 +68,29 @@ export function CommitNode(props: NodeProps) {
   const isRoot =
     !typedData.commit?.parents || typedData.commit.parents.length === 0;
   const isUncommitted = typedData.commit?.id === "working-copy";
+  const uncommittedState = typedData.commit?.uncommitted_state;
   const isStash = typedData.commit?.refs?.some((r: string) =>
     r.startsWith("stash@"),
   );
   const authorHue = getAuthorHue(typedData.commit?.author || "");
+  // Background style for uncommitted changes node
+  const nodeBackgroundStyle = isUncommitted
+    ? (() => {
+        switch (uncommittedState) {
+          case "staged":
+            return { background: "#0a4a1f" }; // darker green
+          case "unstaged":
+            return { background: "#6b7280" }; // gray
+          case "mixed":
+            return {
+              background:
+                "conic-gradient(from 135deg, #0a4a1f 0% 50%, #6b7280 50% 100%)",
+            };
+          default:
+            return { background: "#6b7280" }; // fallback gray
+        }
+      })()
+    : {};
   const isSpecialNode =
     isDetachedHead || isBranchHead || isRoot || isUncommitted || isStash;
 
@@ -506,7 +525,7 @@ export function CommitNode(props: NodeProps) {
                         ? "border-primary"
                         : "border-[hsl(var(--author-hue),60%,60%)] dark:border-[hsl(var(--author-hue),60%,50%)]",
                 isUncommitted
-                  ? "border-dashed border-gray-400 dark:border-gray-500 bg-gray-100 dark:bg-zinc-800"
+                  ? "border-solid border-gray-600 dark:border-gray-400"
                   : "",
                 isStash
                   ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30"
@@ -518,7 +537,12 @@ export function CommitNode(props: NodeProps) {
                 isMerge && !selected && "opacity-50",
                 "shadow-sm dark:shadow-none",
               )}
-              style={{ "--author-hue": authorHue } as React.CSSProperties}
+              style={
+                {
+                  "--author-hue": authorHue,
+                  ...nodeBackgroundStyle,
+                } as React.CSSProperties
+              }
             >
               {isRoot && (
                 <div className="absolute inset-0 rounded-full border-2 border-primary m-0.5" />

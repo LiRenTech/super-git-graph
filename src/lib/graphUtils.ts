@@ -12,6 +12,13 @@ export interface GitCommit {
    */
   parents: string[];
   refs: string[];
+  /**
+   * For uncommitted changes node (id === "working-copy"), indicates the type of changes.
+   * - "staged": only staged changes
+   * - "unstaged": only unstaged (working directory) changes
+   * - "mixed": both staged and unstaged changes
+   */
+  uncommitted_state?: string;
 }
 
 export interface LayoutedElements {
@@ -80,9 +87,12 @@ export function getLayoutedElements(commits: GitCommit[]): LayoutedElements {
     if (commit.parents) {
       commit.parents.forEach((parentId, index) => {
         if (commits.some((c) => c.id === parentId)) {
-          const targetHue = getAuthorHue(commit.author);
+          // Use gray for edges pointing to uncommitted changes node
+          const stroke = commit.id === "working-copy" 
+            ? "#6b7280" // same gray as the node background
+            : `hsl(${getAuthorHue(commit.author)}, 60%, 60%)`;
           const style: { stroke: string; strokeWidth?: number; strokeDasharray?: string } = { 
-            stroke: `hsl(${targetHue}, 60%, 60%)`,
+            stroke,
             strokeWidth: 4,
           };
           // For merge commits, only the second and subsequent parents (merged branches) get dashed lines

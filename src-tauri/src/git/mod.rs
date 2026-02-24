@@ -1,7 +1,7 @@
 use std::fs;
 
 #[allow(unused_imports)]
-use git2::{AnnotatedCommit, BranchType, ObjectType, Oid, Repository, Sort, StatusOptions};
+use git2::{AnnotatedCommit, BranchType, ObjectType, Oid, Repository, Sort, Status, StatusOptions};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -15,6 +15,8 @@ pub struct GitCommit {
     refs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     head_type: Option<String>, // "detached" or "branch"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uncommitted_state: Option<String>, // "staged", "unstaged", or "mixed" for working-copy node
 }
 
 #[derive(Serialize)]
@@ -188,30 +190,56 @@ pub fn get_commits(
         let mut status_opts = StatusOptions::new();
         status_opts.include_untracked(true);
 
-        let has_changes = repo
-            .statuses(Some(&mut status_opts))
-            .map(|statuses| !statuses.is_empty())
-            .unwrap_or(false);
+        if let Ok(statuses) = repo.statuses(Some(&mut status_opts)) {
+            if !statuses.is_empty() {
+                // Analyze statuses to determine if changes are staged, unstaged, or both
+                let mut has_staged = false;
+                let mut has_unstaged = false;
 
-        if has_changes {
-            // Create a virtual "Uncommitted Changes" commit
-            // We need to find the current HEAD to set as parent
-            let head = repo.head().ok();
-            let head_oid = head
-                .as_ref()
-                .and_then(|h| h.target())
-                .map(|oid| oid.to_string());
+                for entry in statuses.iter() {
+                    let status = entry.status();
+                    // Check for staged changes (INDEX_* flags)
+                    if status.intersects(Status::INDEX_NEW | Status::INDEX_MODIFIED | Status::INDEX_DELETED | Status::INDEX_RENAMED | Status::INDEX_TYPECHANGE) {
+                        has_staged = true;
+                    }
+                    // Check for unstaged changes (WT_* flags)
+                    if status.intersects(Status::WT_NEW | Status::WT_MODIFIED | Status::WT_DELETED | Status::WT_RENAMED | Status::WT_TYPECHANGE) {
+                        has_unstaged = true;
+                    }
+                    // If we've found both, we can break early
+                    if has_staged && has_unstaged {
+                        break;
+                    }
+                }
 
-            if let Some(parent_id) = head_oid {
-                commits.push(GitCommit {
-                    id: "working-copy".to_string(),
-                    message: "Uncommitted Changes".to_string(),
-                    author: "You".to_string(),
-                    date: chrono::Utc::now().timestamp(),
-                    parents: vec![parent_id],
-                    refs: vec![],
-                    head_type: None,
-                });
+                // Determine uncommitted state
+                let uncommitted_state = match (has_staged, has_unstaged) {
+                    (true, false) => Some("staged".to_string()),
+                    (false, true) => Some("unstaged".to_string()),
+                    (true, true) => Some("mixed".to_string()),
+                    (false, false) => None, // Should not happen if statuses is not empty
+                };
+
+                // Create a virtual "Uncommitted Changes" commit
+                // We need to find the current HEAD to set as parent
+                let head = repo.head().ok();
+                let head_oid = head
+                    .as_ref()
+                    .and_then(|h| h.target())
+                    .map(|oid| oid.to_string());
+
+                if let Some(parent_id) = head_oid {
+                    commits.push(GitCommit {
+                        id: "working-copy".to_string(),
+                        message: "Uncommitted Changes".to_string(),
+                        author: "You".to_string(),
+                        date: chrono::Utc::now().timestamp(),
+                        parents: vec![parent_id],
+                        refs: vec![],
+                        head_type: None,
+                        uncommitted_state,
+                    });
+                }
             }
         }
     }
@@ -315,6 +343,7 @@ pub fn get_commits(
             parents,
             refs,
             head_type: commit_head_type,
+            uncommitted_state: None,
         });
 
         count += 1;
