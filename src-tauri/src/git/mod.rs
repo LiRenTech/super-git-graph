@@ -71,6 +71,17 @@ pub fn get_all_refs(repo_path: String) -> Result<Vec<GitRef>, String> {
         }
     }
 
+    // Add stash references
+    if let Ok(reflog) = repo.reflog("refs/stash") {
+        for (i, entry) in reflog.iter().enumerate() {
+            let id = entry.id_new();
+            refs.push(GitRef {
+                name: format!("stash@{{{}}}", i),
+                commit_id: id.to_string(),
+            });
+        }
+    }
+
     Ok(refs)
 }
 
