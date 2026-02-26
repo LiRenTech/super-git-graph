@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   ReactFlow,
   Controls,
@@ -14,6 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { RefreshCw, ArrowUp, Eye, EyeOff } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +76,21 @@ export function GitGraphView({
   const isCtrlPressed = useRef(false);
   const [showDiffDialog, setShowDiffDialog] = useState(false);
   const [diffArrowNodeId] = useState("__diff_arrow_target__");
+
+  // Get selected commits for copy button
+  const selectedCommits = useMemo(() => {
+    const selectedNodes = nodes.filter((node) => node.selected);
+    if (selectedNodes.length <= 1) return [];
+    // Extract commit messages and positions
+    return selectedNodes.map((node) => ({
+      id: node.id,
+      message:
+        (node.data.commit as GitCommit)?.message ||
+        (node.data.label as string) ||
+        "",
+      position: node.position,
+    }));
+  }, [nodes]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -692,6 +708,36 @@ export function GitGraphView({
     [edges],
   );
 
+  // Copy selected commit messages to clipboard
+  const handleCopyCommitMessages = useCallback(() => {
+    if (selectedCommits.length <= 1) return;
+
+    // Sort by position (top to bottom, left to right)
+    const sortedCommits = [...selectedCommits].sort((a, b) => {
+      if (a.position.y !== b.position.y) {
+        return a.position.y - b.position.y; // top first
+      }
+      return a.position.x - b.position.x; // left first
+    });
+
+    const messages = sortedCommits
+      .map((c) => c.message)
+      .filter((msg) => msg.trim() !== "");
+
+    if (messages.length === 0) return;
+
+    const text = messages.join("\n");
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        toast.success(`Successfully copied ${messages.length} commit messages`);
+      })
+      .catch((err) => {
+        console.error("Failed to copy to clipboard:", err);
+        toast.error("Failed to copy to clipboard");
+      });
+  }, [selectedCommits]);
+
   // Handle node click in diff mode and shift selection
   const handleNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
@@ -813,6 +859,20 @@ export function GitGraphView({
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg shadow-lg flex items-center gap-2 pointer-events-none">
           <span>Diff mode: Click another commit to compare</span>
           <span className="text-xs opacity-75">(ESC to cancel)</span>
+        </div>
+      )}
+
+      {/* Copy selected commit messages button */}
+      {selectedCommits.length > 1 && (
+        <div className="absolute bottom-4 right-4 z-10">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleCopyCommitMessages}
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+          >
+            Copy {selectedCommits.length} commit messages
+          </Button>
         </div>
       )}
 
