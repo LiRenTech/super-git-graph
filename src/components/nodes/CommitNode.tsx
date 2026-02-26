@@ -108,6 +108,9 @@ export function CommitNode(props: NodeProps) {
     createBranch,
     deleteBranch,
     deleteRemoteBranch,
+    applyStash,
+    dropStash,
+    popStash,
     isLoading,
     loadingOperation,
   } = useGitGraphStore();
@@ -208,6 +211,75 @@ export function CommitNode(props: NodeProps) {
         toast.error(`Failed to checkout commit: ${error.message}`);
       } else {
         toast.error("Failed to checkout commit - unknown error");
+      }
+    }
+  };
+
+  const handleApplyStash = async () => {
+    if (isLoading) return;
+    const stashRef = typedData.commit?.refs?.find((r) =>
+      r.startsWith("stash@"),
+    );
+    if (!stashRef) return;
+
+    try {
+      setPopoverOpen(false);
+      await applyStash(typedData.repoPath, stashRef);
+      toast.success(`Successfully applied stash: ${stashRef}`);
+    } catch (error) {
+      console.error("Failed to apply stash:", error);
+      if (typeof error === "string") {
+        toast.error(`Failed to apply stash: ${error}`);
+      } else if (error instanceof Error) {
+        toast.error(`Failed to apply stash: ${error.message}`);
+      } else {
+        toast.error("Failed to apply stash - unknown error");
+      }
+    }
+  };
+
+  const handleDropStash = async () => {
+    if (isLoading) return;
+    const stashRef = typedData.commit?.refs?.find((r) =>
+      r.startsWith("stash@"),
+    );
+    if (!stashRef) return;
+
+    try {
+      setPopoverOpen(false);
+      await dropStash(typedData.repoPath, stashRef);
+      toast.success(`Successfully dropped stash: ${stashRef}`);
+    } catch (error) {
+      console.error("Failed to drop stash:", error);
+      if (typeof error === "string") {
+        toast.error(`Failed to drop stash: ${error}`);
+      } else if (error instanceof Error) {
+        toast.error(`Failed to drop stash: ${error.message}`);
+      } else {
+        toast.error("Failed to drop stash - unknown error");
+      }
+    }
+  };
+
+  const handlePopStash = async () => {
+    if (isLoading) return;
+    const stashRef = typedData.commit?.refs?.find((r) =>
+      r.startsWith("stash@"),
+    );
+    if (!stashRef) return;
+
+    try {
+      setPopoverOpen(false);
+      await popStash(typedData.repoPath, stashRef);
+      toast.success(`Successfully popped stash: ${stashRef}`);
+    } catch (error) {
+      console.error("Failed to pop stash:", error);
+      if (typeof error === "string") {
+        toast.error(`Failed to pop stash: ${error}`);
+      } else if (error instanceof Error) {
+        toast.error(`Failed to pop stash: ${error.message}`);
+      } else {
+        toast.error("Failed to pop stash - unknown error");
       }
     }
   };
@@ -622,29 +694,69 @@ export function CommitNode(props: NodeProps) {
             <GitCompare className="w-4 h-4" />
             <span className="text-xs">Diff with another commit</span>
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="justify-start gap-2 h-8"
-            onClick={handleCheckout}
-            disabled={isUncommitted}
-          >
-            <ArrowLeftRight className="w-4 h-4" />
-            <span className="text-xs">Checkout this commit</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="justify-start gap-2 h-8"
-            onClick={() => {
-              setPopoverOpen(false);
-              setIsCreateBranchDialogOpen(true);
-            }}
-            disabled={isUncommitted}
-          >
-            <Plus className="w-4 h-4" />
-            <span className="text-xs">Create new branch from this commit</span>
-          </Button>
+          {!isStash && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="justify-start gap-2 h-8"
+              onClick={handleCheckout}
+              disabled={isUncommitted}
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+              <span className="text-xs">Checkout this commit</span>
+            </Button>
+          )}
+          {isStash && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="justify-start gap-2 h-8"
+                onClick={handleApplyStash}
+                disabled={isLoading}
+              >
+                <CornerUpRight className="w-4 h-4" />
+                <span className="text-xs">Apply Stash</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="justify-start gap-2 h-8"
+                onClick={handleDropStash}
+                disabled={isLoading}
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="text-xs">Drop Stash</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="justify-start gap-2 h-8"
+                onClick={handlePopStash}
+                disabled={isLoading}
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+                <span className="text-xs">Pop Stash</span>
+              </Button>
+            </>
+          )}
+          {!isStash && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="justify-start gap-2 h-8"
+              onClick={() => {
+                setPopoverOpen(false);
+                setIsCreateBranchDialogOpen(true);
+              }}
+              disabled={isUncommitted}
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-xs">
+                Create new branch from this commit
+              </span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

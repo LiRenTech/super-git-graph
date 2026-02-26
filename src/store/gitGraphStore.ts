@@ -52,6 +52,9 @@ interface GitGraphState {
   createBranch: (repoPath: string, branchName: string, commitId: string) => Promise<void>;
   deleteBranch: (repoPath: string, branchName: string) => Promise<void>;
   deleteRemoteBranch: (repoPath: string, branchName: string) => Promise<void>;
+  applyStash: (repoPath: string, stashRef: string) => Promise<void>;
+  dropStash: (repoPath: string, stashRef: string) => Promise<void>;
+  popStash: (repoPath: string, stashRef: string) => Promise<void>;
   // Loading state methods
   setLoading: (isLoading: boolean, operation?: string) => void;
   // Add method to set refresh callback
@@ -297,6 +300,84 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       
     } catch (error) {
       console.error('Failed to delete remote branch:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  applyStash: async (repoPath: string, stashRef: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `applying stash ${stashRef}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('apply_stash', {
+        repoPath,
+        stashRef,
+      });
+      
+      // Trigger refresh after successful stash apply
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to apply stash:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  dropStash: async (repoPath: string, stashRef: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `dropping stash ${stashRef}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('drop_stash', {
+        repoPath,
+        stashRef,
+      });
+      
+      // Trigger refresh after successful stash drop
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to drop stash:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  },
+  popStash: async (repoPath: string, stashRef: string) => {
+    if (!repoPath) {
+      throw new Error('No repository path provided');
+    }
+    
+    const { setLoading } = get();
+    
+    try {
+      setLoading(true, `popping stash ${stashRef}`);
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('pop_stash', {
+        repoPath,
+        stashRef,
+      });
+      
+      // Trigger refresh after successful stash pop
+      const { refreshGraph } = get();
+      refreshGraph();
+      
+    } catch (error) {
+      console.error('Failed to pop stash:', error);
       throw error;
     } finally {
       setLoading(false);

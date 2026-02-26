@@ -1,7 +1,7 @@
 use std::fs;
 
 #[allow(unused_imports)]
-use git2::{AnnotatedCommit, BranchType, ObjectType, Oid, Repository, Sort, Status, StatusOptions};
+use git2::{AnnotatedCommit, BranchType, ObjectType, Oid, Repository, Sort, Status, StatusOptions, StashApplyOptions};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -800,4 +800,71 @@ pub fn delete_remote_branch(
         .map_err(|e| format!("Failed to delete remote branch: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn apply_stash(repo_path: String, stash_ref: String) -> Result<(), String> {
+    let mut repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    
+    // Parse stash index from stash_ref (e.g., "stash@{0}")
+    let index = parse_stash_index(&stash_ref)?;
+    
+    // Apply the stash
+    let mut options = git2::StashApplyOptions::new();
+    repo.stash_apply(index, Some(&mut options))
+        .map_err(|e| format!("Failed to apply stash {}: {}", stash_ref, e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub fn drop_stash(repo_path: String, stash_ref: String) -> Result<(), String> {
+    let mut repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    
+    // Parse stash index from stash_ref (e.g., "stash@{0}")
+    let index = parse_stash_index(&stash_ref)?;
+    
+    // Drop the stash
+    repo.stash_drop(index)
+        .map_err(|e| format!("Failed to drop stash {}: {}", stash_ref, e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub fn pop_stash(repo_path: String, stash_ref: String) -> Result<(), String> {
+    let mut repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+    
+    // Parse stash index from stash_ref (e.g., "stash@{0}")
+    let index = parse_stash_index(&stash_ref)?;
+    
+    // Apply the stash
+    let mut options = git2::StashApplyOptions::new();
+    repo.stash_apply(index, Some(&mut options))
+        .map_err(|e| format!("Failed to apply stash {}: {}", stash_ref, e))?;
+    
+    // If apply succeeded, drop the stash
+    repo.stash_drop(index)
+        .map_err(|e| format!("Failed to drop stash after applying {}: {}", stash_ref, e))?;
+    
+    Ok(())
+}
+
+// Helper function to parse stash index from stash reference string
+fn parse_stash_index(stash_ref: &str) -> Result<usize, String> {
+    // Expected format: stash@{0}, stash@{1}, etc.
+    if !stash_ref.starts_with("stash@{") || !stash_ref.ends_with('}') {
+        return Err(format!("Invalid stash reference format: {}. Expected format: stash@{{0}}", stash_ref));
+    }
+    
+    let start = "stash@{".len();
+    let end = stash_ref.len() - 1; // Remove the trailing '}'
+    
+    if start >= end {
+        return Err(format!("Invalid stash reference format: {}. Expected format: stash@{{0}}", stash_ref));
+    }
+    
+    let index_str = &stash_ref[start..end];
+    index_str.parse::<usize>()
+        .map_err(|e| format!("Invalid stash index in {}: {}", stash_ref, e))
 }
