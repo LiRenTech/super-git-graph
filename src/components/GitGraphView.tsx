@@ -652,35 +652,121 @@ export function GitGraphView({
     ],
   );
 
-  // Handle node click in diff mode
+  // Helper function to find path between two nodes in the graph
+  const findPathBetweenNodes = useCallback(
+    (sourceId: string, targetId: string): string[] => {
+      // Build adjacency list (undirected)
+      const adj = new Map<string, string[]>();
+      edges.forEach((edge) => {
+        if (!adj.has(edge.source)) adj.set(edge.source, []);
+        if (!adj.has(edge.target)) adj.set(edge.target, []);
+        adj.get(edge.source)!.push(edge.target);
+        adj.get(edge.target)!.push(edge.source);
+      });
+
+      // BFS to find shortest path
+      const queue: { node: string; path: string[] }[] = [
+        { node: sourceId, path: [sourceId] },
+      ];
+      const visited = new Set<string>();
+
+      while (queue.length > 0) {
+        const { node, path } = queue.shift()!;
+        if (node === targetId) {
+          return path;
+        }
+        if (visited.has(node)) continue;
+        visited.add(node);
+
+        const neighbors = adj.get(node) || [];
+        for (const neighbor of neighbors) {
+          if (!visited.has(neighbor)) {
+            queue.push({ node: neighbor, path: [...path, neighbor] });
+          }
+        }
+      }
+
+      // No path found
+      return [];
+    },
+    [edges],
+  );
+
+  // Handle node click in diff mode and shift selection
   const handleNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      if (!diffMode.active || diffMode.sourceCommitId === null) return;
+      // Diff mode handling
+      if (diffMode.active && diffMode.sourceCommitId !== null) {
+        // Skip if trying to diff with "working-copy"
+        if (node.id === "working-copy") {
+          return;
+        }
 
-      // Skip if trying to diff with "working-copy"
-      if (node.id === "working-copy") {
+        event.stopPropagation();
+
+        console.log("Node clicked in diff mode:", node.id);
+        setDiffTarget(node.id);
+        setShowDiffDialog(true);
+
+        // Remove diff arrow immediately
+        console.log("Removing diff arrow");
+        setEdges((prevEdges) => {
+          const filtered = prevEdges.filter((e) => e.id !== "diff-arrow");
+          console.log("Edges after removal:", filtered.length);
+          return filtered;
+        });
+        // Remove virtual target node immediately
+        setNodes((prevNodes) => {
+          const filtered = prevNodes.filter((n) => n.id !== diffArrowNodeId);
+          console.log("Nodes after removal:", filtered.length);
+          return filtered;
+        });
         return;
       }
 
-      event.stopPropagation();
+      // Shift key range selection
+      if (event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
 
-      console.log("Node clicked in diff mode:", node.id);
-      setDiffTarget(node.id);
-      setShowDiffDialog(true);
+        const selectedNodes = getNodes().filter((n) => n.selected);
+        // If no node is currently selected, just select the clicked node
+        if (selectedNodes.length === 0) {
+          setNodes((nds) =>
+            nds.map((n) => ({
+              ...n,
+              selected: n.id === node.id,
+            })),
+          );
+          return;
+        }
 
-      // Remove diff arrow immediately
-      console.log("Removing diff arrow");
-      setEdges((prevEdges) => {
-        const filtered = prevEdges.filter((e) => e.id !== "diff-arrow");
-        console.log("Edges after removal:", filtered.length);
-        return filtered;
-      });
-      // Remove virtual target node immediately
-      setNodes((prevNodes) => {
-        const filtered = prevNodes.filter((n) => n.id !== diffArrowNodeId);
-        console.log("Nodes after removal:", filtered.length);
-        return filtered;
-      });
+        // Take the first selected node as the start of the range
+        const startNode = selectedNodes[0];
+        const path = findPathBetweenNodes(startNode.id, node.id);
+        console.log("Shift range selection path:", path);
+
+        if (path.length > 0) {
+          setNodes((nds) =>
+            nds.map((n) => ({
+              ...n,
+              selected: path.includes(n.id),
+            })),
+          );
+        } else {
+          // If no path found, just select the clicked node
+          setNodes((nds) =>
+            nds.map((n) => ({
+              ...n,
+              selected: n.id === node.id,
+            })),
+          );
+        }
+        return;
+      }
+
+      // For non-shift clicks, let React Flow handle default selection
+      // (including Ctrl/Cmd for multi-select)
     },
     [
       diffMode.active,
@@ -689,6 +775,8 @@ export function GitGraphView({
       setEdges,
       setNodes,
       diffArrowNodeId,
+      findPathBetweenNodes,
+      getNodes,
     ],
   );
 

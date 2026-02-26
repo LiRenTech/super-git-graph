@@ -41,7 +41,7 @@ export interface LayoutedElements {
  */
 export function getLayoutedElements(commits: GitCommit[]): LayoutedElements {
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "TB", ranksep: 50, nodesep: 20 });
+  g.setGraph({ rankdir: "TB", ranksep: 10, nodesep: 5 });
   g.setDefaultEdgeLabel(() => ({}));
 
   // Add nodes to the graph
