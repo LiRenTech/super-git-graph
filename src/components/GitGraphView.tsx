@@ -370,7 +370,7 @@ export function GitGraphView({
   }, [repoPath, fetchCommits, fetchAllRefs]);
 
   const handleRefresh = () => {
-    fetchCommits(repoPath);
+    fetchCommits(repoPath, false, true);
     fetchAllRefs(repoPath);
   };
 
