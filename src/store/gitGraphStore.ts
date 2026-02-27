@@ -61,6 +61,8 @@ interface GitGraphState {
   setRefreshCallback: (callback: (repoPath: string) => void) => void;
   // Add method to trigger refresh
   refreshGraph: () => void;
+  // Clear state when repository is closed
+  clearState: () => void;
 }
 
 export const useGitGraphStore = create<GitGraphState>((set, get) => ({
@@ -394,4 +396,17 @@ export const useGitGraphStore = create<GitGraphState>((set, get) => ({
       onRefreshRequest(repoPath);
     }
   },
+  clearState: () => set({
+    repoPath: null,
+    nodes: [],
+    edges: [],
+    allRefs: [],
+    visibleBranchNames: [],
+    focusNodeId: null,
+    diffMode: {
+      active: false,
+      sourceCommitId: null,
+      targetCommitId: null,
+    },
+  }),
 }));

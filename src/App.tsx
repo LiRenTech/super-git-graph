@@ -49,6 +49,7 @@ function App() {
     setIsDragSubtreeMode,
     fixedLabelSize,
     setFixedLabelSize,
+    clearState,
   } = useGitGraphStore();
 
   // Initialize dark mode
@@ -82,7 +83,9 @@ function App() {
     const newRepos = openRepos.filter((p) => p !== path);
     setOpenRepos(newRepos);
     if (activeRepo === path) {
-      setActiveRepo(newRepos.length > 0 ? newRepos[newRepos.length - 1] : null);
+      const newActiveRepo = newRepos.length > 0 ? newRepos[newRepos.length - 1] : null;
+      setActiveRepo(newActiveRepo);
+      clearState();
     }
   };
 
