@@ -671,7 +671,162 @@ export function GitGraphView({
   // Helper function to find path between two nodes in the graph
   const findPathBetweenNodes = useCallback(
     (sourceId: string, targetId: string): string[] => {
-      // Build adjacency list (undirected)
+      // Build commit map for quick access
+      const commitMap = new Map<string, GitCommit>();
+      loadedCommits.current.forEach((commit) => {
+        commitMap.set(commit.id, commit);
+      });
+
+      // Build child adjacency list (parent -> children)
+      const childrenMap = new Map<string, string[]>();
+      edges.forEach((edge) => {
+        if (!childrenMap.has(edge.source)) childrenMap.set(edge.source, []);
+        childrenMap.get(edge.source)!.push(edge.target);
+      });
+
+      // Helper function to find path from ancestor to descendant
+      const findPathFromAncestorToDescendant = (
+        ancestorId: string,
+        descendantId: string,
+      ): string[] | null => {
+        // BFS from ancestor to descendant following child relationships
+        const queue: { node: string; path: string[] }[] = [
+          { node: ancestorId, path: [ancestorId] },
+        ];
+        const visited = new Set<string>();
+
+        while (queue.length > 0) {
+          const { node, path } = queue.shift()!;
+          if (node === descendantId) {
+            return path;
+          }
+          if (visited.has(node)) continue;
+          visited.add(node);
+
+          const children = childrenMap.get(node) || [];
+          // Sort children to prioritize main branch (first parent's lineage)
+          const sortedChildren = children.sort((a, b) => {
+            const commitA = commitMap.get(a);
+            const commitB = commitMap.get(b);
+            if (!commitA || !commitB) return 0;
+            
+            // Prefer children where this node is the first parent
+            const isFirstParentForA = commitA.parents[0] === node;
+            const isFirstParentForB = commitB.parents[0] === node;
+            if (isFirstParentForA && !isFirstParentForB) return -1;
+            if (!isFirstParentForA && isFirstParentForB) return 1;
+            
+            // If both or neither are first parent, prefer earlier date (older commit)
+            return commitA.date - commitB.date;
+          });
+
+          for (const child of sortedChildren) {
+            if (!visited.has(child)) {
+              queue.push({ node: child, path: [...path, child] });
+            }
+          }
+        }
+        return null;
+      };
+
+      // Check if source is ancestor of target
+      const pathFromSourceToTarget = findPathFromAncestorToDescendant(
+        sourceId,
+        targetId,
+      );
+      if (pathFromSourceToTarget) {
+        return pathFromSourceToTarget;
+      }
+
+      // Check if target is ancestor of source
+      const pathFromTargetToSource = findPathFromAncestorToDescendant(
+        targetId,
+        sourceId,
+      );
+      if (pathFromTargetToSource) {
+        // Reverse the path to get from source to target
+        return pathFromTargetToSource.reverse();
+      }
+
+      // If no direct ancestor relationship, try to find common ancestor
+      // Build parent adjacency list for BFS
+      const parentMap = new Map<string, string[]>();
+      edges.forEach((edge) => {
+        if (!parentMap.has(edge.target)) parentMap.set(edge.target, []);
+        parentMap.get(edge.target)!.push(edge.source);
+      });
+
+      // Find common ancestor by exploring ancestors of both nodes
+      const findCommonAncestor = (): string | null => {
+        const visitedFromSource = new Map<string, number>();
+        const queue: { node: string; distance: number }[] = [
+          { node: sourceId, distance: 0 },
+        ];
+
+        while (queue.length > 0) {
+          const { node, distance } = queue.shift()!;
+          if (visitedFromSource.has(node)) continue;
+          visitedFromSource.set(node, distance);
+
+          const parents = parentMap.get(node) || [];
+          for (const parent of parents) {
+            if (!visitedFromSource.has(parent)) {
+              queue.push({ node: parent, distance: distance + 1 });
+            }
+          }
+        }
+
+        // Now check ancestors of target
+        const targetQueue: { node: string; distance: number }[] = [
+          { node: targetId, distance: 0 },
+        ];
+        const visitedFromTarget = new Set<string>();
+
+        while (targetQueue.length > 0) {
+          const { node, distance } = targetQueue.shift()!;
+          if (visitedFromTarget.has(node)) continue;
+          visitedFromTarget.add(node);
+
+          // Check if this node is an ancestor of source
+          if (visitedFromSource.has(node)) {
+            return node;
+          }
+
+          const parents = parentMap.get(node) || [];
+          for (const parent of parents) {
+            if (!visitedFromTarget.has(parent)) {
+              targetQueue.push({ node: parent, distance: distance + 1 });
+            }
+          }
+        }
+
+        return null;
+      };
+
+      const commonAncestor = findCommonAncestor();
+      if (commonAncestor) {
+        // Find path from common ancestor to source (reversed)
+        const pathFromAncestorToSource = findPathFromAncestorToDescendant(
+          commonAncestor,
+          sourceId,
+        );
+        // Find path from common ancestor to target
+        const pathFromAncestorToTarget = findPathFromAncestorToDescendant(
+          commonAncestor,
+          targetId,
+        );
+
+        if (pathFromAncestorToSource && pathFromAncestorToTarget) {
+          // Combine paths: source -> ... -> common ancestor -> ... -> target
+          // But we need to remove the common ancestor from one path to avoid duplication
+          const sourceToAncestor = pathFromAncestorToSource.slice().reverse(); // Reverse to get source -> ancestor
+          const ancestorToTarget = pathFromAncestorToTarget.slice(1); // Remove common ancestor
+          return [...sourceToAncestor, ...ancestorToTarget];
+        }
+      }
+
+      // Fallback: use undirected BFS as before
+      console.log("No directed path found, falling back to undirected BFS");
       const adj = new Map<string, string[]>();
       edges.forEach((edge) => {
         if (!adj.has(edge.source)) adj.set(edge.source, []);
@@ -680,7 +835,6 @@ export function GitGraphView({
         adj.get(edge.target)!.push(edge.source);
       });
 
-      // BFS to find shortest path
       const queue: { node: string; path: string[] }[] = [
         { node: sourceId, path: [sourceId] },
       ];
@@ -702,7 +856,6 @@ export function GitGraphView({
         }
       }
 
-      // No path found
       return [];
     },
     [edges],
